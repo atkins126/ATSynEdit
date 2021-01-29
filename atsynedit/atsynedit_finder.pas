@@ -10,13 +10,15 @@ unit ATSynEdit_Finder;
 interface
 
 uses
-  SysUtils, Classes, Dialogs, Forms,
-  Math,
+  SysUtils, Classes, Graphics,
+  Dialogs, Forms, Math,
   ATSynEdit,
   ATSynEdit_FGL,
   ATSynEdit_RegExpr, //must be with {$define Unicode}
   ATSynEdit_Carets,
+  ATSynEdit_Markers,
   ATSynEdit_UnicodeData,
+  ATSynEdit_LineParts,
   ATStrings,
   ATStringProc,
   ATStringProc_Separator,
@@ -97,8 +99,8 @@ type
     function GetRegexReplacement(const AFromText: UnicodeString): UnicodeString;
     function IsProgressNeeded(ANewPos: integer): boolean; inline;
   protected
-    procedure DoOnFound; virtual;
-    function CheckTokens(APos: integer): boolean; virtual;
+    procedure DoOnFound(AWithEvent: boolean); virtual;
+    function CheckTokensBuffer(APos1, APos2: integer): boolean; virtual;
   public
     OptBack: boolean;
     OptWords: boolean; //for non-regex
@@ -121,10 +123,14 @@ type
   end;
 
 type
+
+  { TATEditorFragment }
+
   TATEditorFragment = record
     X1, Y1, X2, Y2: integer;
     procedure Init(AX1, AY1, AX2, AY2: integer);
     function Inited: boolean;
+    function IsMarkerOnFragmentEnd(Ed: TATSynEdit): boolean;
     class operator =(const a, b: TATEditorFragment): boolean;
   end;
 
@@ -145,15 +151,18 @@ type
     FMatchEdEnd: TPoint;
     FMatchEdPosAfterRep: TPoint;
     FMaxLineLen: integer;
+    //note: all code of finder must use FinderCarets, not Editor.Carets! except in: FinderCarets.Assign(Editor.Carets)
     FinderCarets: TATCarets;
     FVirtualCaretsAsString: string;
     FIndentHorz: integer;
     FIndentVert: integer;
     FDataString: string;
     FCallbackString: string;
+    FPlaceMarker: boolean;
     //FReplacedAtEndOfText: boolean;
     //
-    procedure UpdateCarets;
+    function IsSelStartsAtMatch: boolean;
+    procedure UpdateCarets(ASimpleAction: boolean);
     procedure SetVirtualCaretsAsString(const AValue: string);
     procedure ClearMatchPos; override;
     function FindMatch_InEditor(APosStart, APosEnd: TPoint; AWithEvent: boolean): boolean;
@@ -166,6 +175,8 @@ type
     function GetOffsetOfCaret: integer;
     function GetOffsetStartPos: integer;
     function GetRegexSkipIncrement: integer; inline;
+    procedure GetMarkerPos(out AX, AY: integer);
+    procedure GetEditorSelRange(out AX1, AY1, AX2, AY2: integer; out ASelText: UnicodeString);
     procedure DoFixCaretSelectionDirection;
     //
     procedure DoCollect_Usual(AList: TATFinderResults; AWithEvent, AWithConfirm: boolean);
@@ -186,8 +197,7 @@ type
     procedure DoReplaceTextInEditor(APosBegin, APosEnd: TPoint;
       const AReplacement: UnicodeString; AUpdateBuffer, AUpdateCaret: boolean;
       out APosAfterReplace: TPoint);
-    function IsSelStartsAtMatch_InEditor: boolean;
-    function IsSelStartsAtMatch_Buffered: boolean;
+    procedure PlaceCaret(APosX, APosY: integer; AEndX: integer=-1; AEndY: integer=-1);
     //fragments
     procedure DoFragmentsClear;
     procedure DoFragmentsInit;
@@ -198,11 +208,11 @@ type
     function CurrentFragment: TATEditorFragment;
     property CurrentFragmentIndex: integer read FFragmentIndex write SetFragmentIndex;
   protected
-    procedure DoOnFound; override;
+    procedure DoOnFound(AWithEvent: boolean); override;
     procedure DoConfirmReplace(APos, AEnd: TPoint; var AConfirmThis,
       AConfirmContinue: boolean; var AReplacement: UnicodeString);
-    function CheckTokens(AX, AY: integer): boolean;
-    function CheckTokens(APos: integer): boolean; override;
+    function CheckTokensEd(AX, AY, AX2, AY2: integer): boolean;
+    function CheckTokensBuffer(APos1, APos2: integer): boolean; override;
   public
     Editor: TATSynEdit;
     OptFromCaret: boolean;
@@ -233,6 +243,9 @@ type
     procedure DoAction_ExtractAll(AWithEvent: boolean; AMatches: TStringList; ASorted: boolean;
       ADuplicates: TDuplicates);
     function DoAction_ReplaceAll: integer;
+    function DoAction_HighlightAllEditorMatches(AColorBorder: TColor;
+      AStyleBorder: TATLineStyle; ATagValue, AMaxLines: integer;
+      AScrollTo1st, AMoveCaret: boolean): integer;
     //
     property OnFound: TATFinderFound read FOnFound write FOnFound;
     property OnConfirmReplace: TATFinderConfirmReplace read FOnConfirmReplace write FOnConfirmReplace;
@@ -376,6 +389,17 @@ begin
   Result:= Y1>=0;
 end;
 
+function TATEditorFragment.IsMarkerOnFragmentEnd(Ed: TATSynEdit): boolean;
+var
+  Mark: TATMarkerItem;
+begin
+  if Ed.Markers.Count=0 then exit(false);
+  Mark:= Ed.Markers[0];
+  Result:=
+    (Mark.LineLen<>0) and (Mark.PosY=Y2) and
+    ((Mark.PosX=X2) or (Mark.PosX+Mark.LineLen=X2));
+end;
+
 class operator TATEditorFragment.=(const a, b: TATEditorFragment): boolean;
 begin
   Result:= false;
@@ -418,12 +442,12 @@ begin
   FStrReplace:= AValue;
 end;
 
-procedure TATTextFinder.DoOnFound;
+procedure TATTextFinder.DoOnFound(AWithEvent: boolean);
 begin
   //
 end;
 
-function TATTextFinder.CheckTokens(APos: integer): boolean;
+function TATTextFinder.CheckTokensBuffer(APos1, APos2: integer): boolean;
 begin
   Result:= true;
 end;
@@ -434,6 +458,8 @@ begin
 end;
 
 function TATTextFinder.DoFind_Regex(AFromPos: integer): boolean;
+var
+  FoundPos, FoundLen: integer;
 begin
   Result:= false;
   if StrText='' then exit;
@@ -465,21 +491,25 @@ begin
 
   if FRegex.ExecPos(AFromPos, false, OptBack) then
   begin
-    if CheckTokens(FRegex.MatchPos[0]) then
+    FoundPos:= FRegex.MatchPos[0];
+    FoundLen:= FRegex.MatchLen[0];
+    if CheckTokensBuffer(FoundPos, FoundPos+FoundLen) then
     begin
       Result:= true;
-      FMatchPos:= FRegex.MatchPos[0];
-      FMatchLen:= FRegex.MatchLen[0];
+      FMatchPos:= FoundPos;
+      FMatchLen:= FoundLen;
       exit
     end;
 
     repeat
       if not FRegex.ExecNext(OptBack) then exit;
-      if CheckTokens(FRegex.MatchPos[0]) then
+      FoundPos:= FRegex.MatchPos[0];
+      FoundLen:= FRegex.MatchLen[0];
+      if CheckTokensBuffer(FoundPos, FoundPos+FoundLen) then
       begin
         Result:= true;
-        FMatchPos:= FRegex.MatchPos[0];
-        FMatchLen:= FRegex.MatchLen[0];
+        FMatchPos:= FoundPos;
+        FMatchLen:= FoundLen;
         exit
       end;
     until false;
@@ -630,7 +660,7 @@ begin
   bOk:= true;
 
   if bOk then
-    if not CheckTokens(P1.X, P1.Y) then
+    if not CheckTokensEd(P1.X, P1.Y, P2.X, P2.Y) then
       bOk:= false;
 
   if bOk and AWithConfirm then
@@ -644,12 +674,9 @@ begin
     Res.Init(P1, P2);
     AList.Add(Res);
 
-    if AWithEvent then
-    begin
-      FMatchPos:= FRegex.MatchPos[0];
-      FMatchLen:= FRegex.MatchLen[0];
-      DoOnFound;
-    end;
+    FMatchPos:= FRegex.MatchPos[0];
+    FMatchLen:= FRegex.MatchLen[0];
+    DoOnFound(AWithEvent);
   end;
 
   while FRegex.ExecNext do
@@ -659,7 +686,7 @@ begin
 
     if Application.Terminated then exit;
 
-    if not CheckTokens(P1.X, P1.Y) then Continue;
+    if not CheckTokensEd(P1.X, P1.Y, P2.X, P2.Y) then Continue;
 
     if AWithConfirm then
     begin
@@ -671,12 +698,9 @@ begin
     Res.Init(P1, P2);
     AList.Add(Res);
 
-    if AWithEvent then
-    begin
-      FMatchPos:= FRegex.MatchPos[0];
-      FMatchLen:= FRegex.MatchLen[0];
-      DoOnFound;
-    end;
+    FMatchPos:= FRegex.MatchPos[0];
+    FMatchLen:= FRegex.MatchLen[0];
+    DoOnFound(AWithEvent);
 
     if IsProgressNeeded(Res.FPos.Y) then
       if Assigned(FOnProgress) then
@@ -706,11 +730,13 @@ end;
 
 { TATEditorFinder }
 
-procedure TATEditorFinder.UpdateCarets;
+procedure TATEditorFinder.UpdateCarets(ASimpleAction: boolean);
 begin
   if FVirtualCaretsAsString='' then
     if Assigned(Editor) then
       FinderCarets.Assign(Editor.Carets);
+
+  FPlaceMarker:= ASimpleAction and OptInSelection and FinderCarets.IsSelection;
 end;
 
 procedure TATEditorFinder.SetVirtualCaretsAsString(const AValue: string);
@@ -764,9 +790,6 @@ end;
 
 procedure TATEditorFinder.UpdateFragments;
 begin
-  if OptInSelection then
-    OptFromCaret:= false;
-
   DoFragmentsClear;
   if OptInSelection then
     DoFragmentsInit;
@@ -810,7 +833,7 @@ var
   Cnt: integer;
   PosEnd: TPoint;
 begin
-  UpdateCarets;
+  UpdateCarets(true);
   if OptRegex then
     raise Exception.Create('Finder FindSimple called in regex mode');
 
@@ -860,15 +883,32 @@ end;
 function TATEditorFinder.GetOffsetOfCaret: integer;
 var
   Pnt: TPoint;
+  MarkX, MarkY: integer;
+  bMarkerUsed: boolean;
 begin
-  if FinderCarets.Count>0 then
-    with FinderCarets[0] do
+  bMarkerUsed:= false;
+  if FPlaceMarker then
+  begin
+    GetMarkerPos(MarkX, MarkY);
+    if MarkY>=0 then
     begin
-      Pnt.X:= PosX;
-      Pnt.Y:= PosY;
-    end
-  else
-    Pnt:= Point(0, 0);
+      bMarkerUsed:= true;
+      Pnt.X:= MarkX;
+      Pnt.Y:= MarkY;
+    end;
+  end;
+
+  if not bMarkerUsed then
+  begin
+    if FinderCarets.Count>0 then
+      with FinderCarets[0] do
+      begin
+        Pnt.X:= PosX;
+        Pnt.Y:= PosY;
+      end
+    else
+      Pnt:= Point(0, 0);
+  end;
 
   Result:= ConvertCaretPosToBufferPos(Pnt);
 
@@ -884,7 +924,7 @@ function TATEditorFinder.DoAction_CountAll(AWithEvent: boolean): integer;
 var
   i: integer;
 begin
-  UpdateCarets;
+  UpdateCarets(false);
   UpdateFragments;
   if OptRegex then
     UpdateBuffer;
@@ -905,7 +945,7 @@ end;
 
 procedure TATEditorFinder.DoAction_FindAll(AResults: TATFinderResults; AWithEvent: boolean);
 begin
-  UpdateCarets;
+  UpdateCarets(false);
   UpdateFragments;
   CurrentFragmentIndex:= 0;
 
@@ -929,7 +969,7 @@ var
 begin
   if not OptRegex then
     raise Exception.Create('Finder Extract action called for non-regex mode');
-  UpdateCarets;
+  UpdateCarets(false);
   UpdateBuffer;
 
   AMatches.Clear;
@@ -963,7 +1003,7 @@ begin
   Result:= 0;
   if Editor.ModeReadOnly then exit;
 
-  UpdateCarets;
+  UpdateCarets(false);
   UpdateFragments;
   if OptRegex then
     UpdateBuffer;
@@ -1074,7 +1114,7 @@ begin
       //correct caret pos
       //e.g. replace "dddddd" to "--": move lefter
       //e.g. replace "ab" to "cd cd": move righter
-      Editor.DoCaretSingle(APosAfterReplace.X, APosAfterReplace.Y);
+      PlaceCaret(APosAfterReplace.X, APosAfterReplace.Y);
     end;
 end;
 
@@ -1116,14 +1156,25 @@ begin
   end;
 end;
 
-function TATEditorFinder.CheckTokens(AX, AY: integer): boolean;
+function TATEditorFinder.CheckTokensEd(AX, AY, AX2, AY2: integer): boolean;
 var
   Kind: TATTokenKind;
 begin
+  if OptInSelection then
+  begin
+    //ignore positions found after the selection
+    if not FinderCarets.IsPosSelected(AX, AY) then
+      exit(false);
+    if not FinderCarets.IsPosSelected(AX2, AY2, true{AllowAtEdge}) then
+      exit(false);
+  end;
+
   if OptTokens=cTokensAll then
     exit(true);
+
   if not Assigned(FOnGetToken) then
     exit(true);
+
   FOnGetToken(Editor, AX, AY, Kind);
   case OptTokens of
     cTokensOnlyComments:
@@ -1141,22 +1192,28 @@ begin
   end;
 end;
 
-function TATEditorFinder.CheckTokens(APos: integer): boolean;
+function TATEditorFinder.CheckTokensBuffer(APos1, APos2: integer): boolean;
 var
-  P: TPoint;
+  P1, P2: TPoint;
 begin
-  P:= ConvertBufferPosToCaretPos(APos);
-  Result:= CheckTokens(P.X, P.Y);
+  P1:= ConvertBufferPosToCaretPos(APos1);
+  P2:= ConvertBufferPosToCaretPos(APos2);
+  Result:= CheckTokensEd(P1.X, P1.Y, P2.X, P2.Y);
 end;
 
 function TATEditorFinder.DoAction_FindOrReplace(AReplace, AForMany: boolean;
   out AChanged: boolean; AUpdateCaret: boolean): boolean;
+//label
+//  LoopFw;
 var
+  NMaxFragment: integer;
   i: integer;
+  bWasGoodFragment: boolean;
 begin
   Result:= false;
   AChanged:= false;
-  UpdateCarets;
+  UpdateCarets(true);
+  if OptInSelection and not FinderCarets.IsSelection then exit;
 
   if not Assigned(Editor) then
     raise Exception.Create('Finder.Editor not set');
@@ -1175,18 +1232,55 @@ begin
     exit
   end;
 
+  NMaxFragment:= FFragments.Count-1;
+
   if not OptBack then
   begin
-    for i:= 0 to FFragments.Count-1 do
+    bWasGoodFragment:= false;
+
+    //handle OptWrapped #1, Result isn't ready
+    //this is to reset special marker, when last match in last selection is: abc[def], ie until selection end
+    if OptWrapped then
+      if FPlaceMarker then
+        if FFragments[NMaxFragment].IsMarkerOnFragmentEnd(Editor) then
+        begin
+          Editor.Markers.Clear;
+          bWasGoodFragment:= true;
+        end;
+
+    //LoopFw:
+    for i:= 0 to NMaxFragment do
     begin
       CurrentFragmentIndex:= i;
       Result:= DoFindOrReplace_InFragment(AReplace, AForMany, AChanged, AUpdateCaret);
-      if Result then Break;
+      if Result then
+      begin
+        bWasGoodFragment:= true;
+        Break;
+      end;
     end;
+
+    {
+    removed due to looping forever:
+    https://github.com/Alexey-T/CudaText/issues/3006
+    http://synwrite.sourceforge.net/forums/viewtopic.php?p=14438#p14438
+
+    //handle OptWrapped #2, "if not Result"
+    //this is to reset special marker, when last match in last selection is: abc[def]gh, ie not until selection end
+    if OptWrapped and bWasGoodFragment then
+      if not Result then
+        if FPlaceMarker then
+          if CurrentFragmentIndex=NMaxFragment then
+          begin
+            Editor.Markers.Clear;
+            goto LoopFw;
+          end;
+          }
   end
   else
   begin
-    for i:= FFragments.Count-1 downto 0 do
+    //OptWrap isn't supported for multi-select for backward search yet
+    for i:= NMaxFragment downto 0 do
     begin
       CurrentFragmentIndex:= i;
       Result:= DoFindOrReplace_InFragment(AReplace, AForMany, AChanged, AUpdateCaret);
@@ -1214,7 +1308,9 @@ var
   NLastX, NLastY, NLines: integer;
   PosStart, PosEnd, SecondStart, SecondEnd: TPoint;
   bStartAtEdge: boolean;
+  bMarkerFound: boolean;
   Fr: TATEditorFragment;
+  MarkX, MarkY: integer;
 begin
   Result:= false;
   AChanged:= false;
@@ -1239,27 +1335,42 @@ begin
     PosEnd.Y:= 0;
   end;
 
-  Fr:= CurrentFragment;
-  if Fr.Inited then
+  bMarkerFound:= false;
+  if OptFromCaret and FPlaceMarker then
   begin
-    if not OptBack then
+    GetMarkerPos(MarkX, MarkY);
+    if MarkY>=0 then
     begin
-      PosStart.X:= Fr.X1;
-      PosStart.Y:= Fr.Y1;
+      bMarkerFound:= true;
+      PosStart.X:= MarkX;
+      PosStart.Y:= MarkY;
+    end;
+  end;
+
+  if not bMarkerFound then
+  begin
+    Fr:= CurrentFragment;
+    if Fr.Inited then
+    begin
+      if not OptBack then
+      begin
+        PosStart.X:= Fr.X1;
+        PosStart.Y:= Fr.Y1;
+      end
+      else
+      begin
+        PosStart.X:= Fr.X2;
+        PosStart.Y:= Fr.Y2;
+      end;
     end
     else
+    if OptFromCaret then
     begin
-      PosStart.X:= Fr.X2;
-      PosStart.Y:= Fr.Y2;
+      if FinderCarets.Count=0 then exit;
+      Caret:= FinderCarets[0];
+      PosStart.X:= Caret.PosX;
+      PosStart.Y:= Caret.PosY;
     end;
-  end
-  else
-  if OptFromCaret then
-  begin
-    if FinderCarets.Count=0 then exit;
-    Caret:= FinderCarets[0];
-    PosStart.X:= Caret.PosX;
-    PosStart.Y:= Caret.PosY;
   end;
 
   Result:= DoFindOrReplace_InEditor_Internal(AReplace, AForMany, AChanged, PosStart, PosEnd, AUpdateCaret);
@@ -1315,7 +1426,7 @@ begin
   if Result then
   begin
     if AUpdateCaret then
-      Editor.DoCaretSingle(FMatchEdPos.X, FMatchEdPos.Y);
+      PlaceCaret(FMatchEdPos.X, FMatchEdPos.Y);
 
     if AReplace then
     begin
@@ -1355,13 +1466,13 @@ begin
     begin
       if AReplace then
         //don't select
-        //Editor.DoCaretSingle(FMatchEdPos.X, FMatchEdPos.Y) //bad: cudatext.finder_proc(.. FINDER_REP_ALL_EX) won't go to next
-        Editor.DoCaretSingle(FMatchEdEnd.X, FMatchEdEnd.Y)
+        //PlaceCaret(FMatchEdPos.X, FMatchEdPos.Y) //bad: cudatext.finder_proc(.. FINDER_REP_ALL_EX) won't go to next
+        PlaceCaret(FMatchEdEnd.X, FMatchEdEnd.Y)
       else
       if OptBack and OptPutBackwardSelection then
-        Editor.DoCaretSingle(FMatchEdPos.X, FMatchEdPos.Y, FMatchEdEnd.X, FMatchEdEnd.Y)
+        PlaceCaret(FMatchEdPos.X, FMatchEdPos.Y, FMatchEdEnd.X, FMatchEdEnd.Y)
       else
-        Editor.DoCaretSingle(FMatchEdEnd.X, FMatchEdEnd.Y, FMatchEdPos.X, FMatchEdPos.Y);
+        PlaceCaret(FMatchEdEnd.X, FMatchEdEnd.Y, FMatchEdPos.X, FMatchEdPos.Y);
     end;
   end;
 end;
@@ -1419,7 +1530,7 @@ begin
     P1:= ConvertBufferPosToCaretPos(FMatchPos);
     P2:= ConvertBufferPosToCaretPos(FMatchPos+FMatchLen);
     if AUpdateCaret then
-      Editor.DoCaretSingle(P1.X, P1.Y);
+      PlaceCaret(P1.X, P1.Y);
 
     if AReplace then
     begin
@@ -1450,109 +1561,103 @@ begin
     begin
       if AReplace then
         //don't select
-        Editor.DoCaretSingle(P1.X, P1.Y)
+        PlaceCaret(P1.X, P1.Y)
       else
       if OptBack and OptPutBackwardSelection then
-        Editor.DoCaretSingle(P1.X, P1.Y, P2.X, P2.Y)
+        PlaceCaret(P1.X, P1.Y, P2.X, P2.Y)
       else
-        Editor.DoCaretSingle(P2.X, P2.Y, P1.X, P1.Y);
+        PlaceCaret(P2.X, P2.Y, P1.X, P1.Y);
     end;
   end;
 end;
 
-function TATEditorFinder.IsSelStartsAtMatch_InEditor: boolean;
+function TATEditorFinder.IsSelStartsAtMatch: boolean;
 var
-  Caret: TATCaretItem;
   X1, Y1, X2, Y2: integer;
-  bSel: boolean;
+  SSelText: UnicodeString;
 begin
   Result:= false;
-  if FinderCarets.Count=0 then exit;
-  Caret:= FinderCarets[0];
-  Caret.GetRange(X1, Y1, X2, Y2, bSel);
-  if not bSel then exit;
+  GetEditorSelRange(X1, Y1, X2, Y2, SSelText);
+  if SSelText='' then exit;
 
-  //allow to replace, also if selection=Strfind
-  Result:=
-    (
-     (FMatchEdPos.X=X1) and
-     (FMatchEdPos.Y=Y1) and
-     (FMatchEdEnd.X=X2) and
-     (FMatchEdEnd.Y=Y2)
-    ) or
-    ((StrFind<>'') and (Editor.TextSelectedEx(Caret)=StrFind));
+  //FMatchEd* are set even in OptRegex mode
+  Result:= (
+    (FMatchEdPos.X=X1) and
+    (FMatchEdPos.Y=Y1) and
+    (FMatchEdEnd.X=X2) and
+    (FMatchEdEnd.Y=Y2)
+    );
+  if Result then exit;
+
+  if not FPlaceMarker then
+    Result:= SSelText=StrFind;
 end;
 
-function TATEditorFinder.IsSelStartsAtMatch_Buffered: boolean;
+procedure TATEditorFinder.PlaceCaret(APosX, APosY: integer; AEndX: integer;
+  AEndY: integer);
+const
+  cTag = 100;
 var
-  Caret: TATCaretItem;
-  X1, Y1, X2, Y2: integer;
-  PosOfBegin, PosOfEnd: integer;
-  bSel: boolean;
+  NLineLen: integer;
 begin
-  Result:= false;
-  if FinderCarets.Count=0 then exit;
-  Caret:= FinderCarets[0];
-  Caret.GetRange(X1, Y1, X2, Y2, bSel);
-  if not bSel then exit;
-
-  PosOfBegin:= ConvertCaretPosToBufferPos(Point(X1, Y1));
-  PosOfEnd:= ConvertCaretPosToBufferPos(Point(X2, Y2));
-
-  //allow to replace, also if selection=Strfind
-  Result:=
-    ((PosOfBegin=FMatchPos) and (PosOfEnd=FMatchPos+FMatchLen)) or
-    ((StrFind<>'') and (Editor.TextSelectedEx(Caret)=StrFind));
+  if FPlaceMarker then
+  begin
+    if APosY=AEndY then
+      NLineLen:= AEndX-APosX
+    else
+      NLineLen:= 0;
+    Editor.Markers.Clear;
+    Editor.Markers.Add(APosX, APosY, cTag, 0, 0, nil, 0, mmmShowInTextOnly, NLineLen);
+  end
+  else
+  begin
+    Editor.DoCaretSingle(APosX, APosY, AEndX, AEndY);
+    Editor.DoEventCarets;
+  end;
 end;
 
 function TATEditorFinder.DoAction_ReplaceSelected(AUpdateCaret: boolean): boolean;
 var
   Caret: TATCaretItem;
-  P1, P2: TPoint;
   X1, Y1, X2, Y2: integer;
-  bSel: boolean;
   SSelText, SNew: UnicodeString;
+  bSel: boolean;
 begin
   Result:= false;
   if Editor.ModeReadOnly then exit;
 
-  UpdateCarets;
+  UpdateCarets(true);
+  if OptInSelection and not FinderCarets.IsSelection then exit;
   UpdateFragments;
 
-  if OptRegex then
+  if not IsSelStartsAtMatch then
   begin
-    if not IsSelStartsAtMatch_Buffered then
-    begin
-      DoFindOrReplace_Buffered(false, false, bSel, AUpdateCaret);
-      exit;
-    end;
-  end
-  else
-  begin
-    if not IsSelStartsAtMatch_InEditor then
-    begin
+    if OptRegex then
+      DoFindOrReplace_Buffered(false, false, bSel, AUpdateCaret)
+    else
       DoFindOrReplace_InEditor(false, false, bSel, AUpdateCaret);
-      exit;
-    end;
+    exit;
   end;
 
-  Caret:= FinderCarets[0];
-  Caret.GetRange(X1, Y1, X2, Y2, bSel);
-  if not bSel then exit;
-  P1:= Point(X1, Y1);
-  P2:= Point(X2, Y2);
+  GetEditorSelRange(X1, Y1, X2, Y2, SSelText);
+  if (Y2<0) then exit;
 
-  SSelText:= Editor.TextSelectedEx(Caret);
-
-  Caret.EndX:= -1;
-  Caret.EndY:= -1;
+  if not FPlaceMarker then
+  begin
+    Caret:= FinderCarets[0];
+    Caret.EndX:= -1;
+    Caret.EndY:= -1;
+  end;
 
   if OptRegex then
     SNew:= GetRegexReplacement(SSelText)
   else
     SNew:= StrReplace;
 
-  DoReplaceTextInEditor(P1, P2, SNew, true, true, FMatchEdPosAfterRep);
+  DoReplaceTextInEditor(
+    Point(X1, Y1),
+    Point(X2, Y2),
+    SNew, true, true, FMatchEdPosAfterRep);
   Result:= true;
 end;
 
@@ -1606,13 +1711,14 @@ begin
   begin
     NPos:= Max(1, AStartPos);
     Result:= DoFind_Regex(NPos);
-    if Result then DoOnFound;
+    if Result then
+      DoOnFound(true);
   end
   else
     ShowMessage('Error: Finder.FindMatch called for non-regex');
 end;
 
-procedure TATEditorFinder.DoOnFound;
+procedure TATEditorFinder.DoOnFound(AWithEvent: boolean);
 begin
   if OptRegex then
   begin
@@ -1620,8 +1726,9 @@ begin
     FMatchEdEnd:= ConvertBufferPosToCaretPos(FMatchPos+FMatchLen);
   end;
 
-  if Assigned(FOnFound) then
-    FOnFound(Self, FMatchEdPos, FMatchEdEnd);
+  if AWithEvent then
+    if Assigned(FOnFound) then
+      FOnFound(Self, FMatchEdPos, FMatchEdEnd);
 end;
 
 function TATEditorFinder.GetRegexSkipIncrement: integer;
@@ -1633,7 +1740,6 @@ begin
   else
     Result:= 0;
 end;
-
 
 procedure TATEditorFinder.DoFragmentsInit;
 var
@@ -1727,7 +1833,7 @@ begin
 
   if Assigned(FOnConfirmReplace) then
   begin
-    Editor.DoCaretSingle(APos.X, APos.Y);
+    PlaceCaret(APos.X, APos.Y);
     FOnConfirmReplace(Self, APos, AEnd, true, AConfirmThis, AConfirmContinue, AReplacement);
   end;
 end;
@@ -1847,6 +1953,7 @@ var
   SFind, SLineToTest: UnicodeString;
   NLen, NStartOffset, NEndOffset: integer;
   IndexLine, IndexChar, IndexLineMax, i: integer;
+  FoundPos, FoundEnd: TPoint;
   bLineMustBeUnicode: boolean;
   bOk: boolean;
 begin
@@ -1936,20 +2043,23 @@ begin
           //consider whole words (only for single line)
           if bOk and OptWords and (PartCount=1) then
             bOk:= IsFinderWholeWordRange(SLineLoopedW, IndexChar+1, IndexChar+1+SLinePart_Len);
+
+          FoundPos.Y:= IndexLine;
+          FoundPos.X:= IndexChar;
+          FoundEnd.Y:= IndexLine+PartCount-1;
+          if PartCount=1 then
+            FoundEnd.X:= IndexChar+SLinePart_Len
+          else
+            FoundEnd.X:= _GetLenPart(PartCount-1);
+
           //consider syntax-elements
           if bOk then
-            bOk:= CheckTokens(IndexChar, IndexLine);
+            bOk:= CheckTokensEd(FoundPos.X, FoundPos.Y, FoundEnd.X, FoundEnd.Y);
           if bOk then
           begin
-            FMatchEdPos.Y:= IndexLine;
-            FMatchEdPos.X:= IndexChar;
-            FMatchEdEnd.Y:= IndexLine+PartCount-1;
-            if PartCount=1 then
-              FMatchEdEnd.X:= IndexChar+SLinePart_Len
-            else
-              FMatchEdEnd.X:= _GetLenPart(PartCount-1);
-            if AWithEvent then
-              DoOnFound;
+            FMatchEdPos:= FoundPos;
+            FMatchEdEnd:= FoundEnd;
+            DoOnFound(AWithEvent);
             Exit(true);
           end;
         end;
@@ -2014,27 +2124,30 @@ begin
           //consider whole words (only for single line)
           if bOk and OptWords and (PartCount=1) then
             bOk:= IsFinderWholeWordRange(SLineLoopedW, IndexChar-SLinePart_Len, IndexChar);
+
+          if PartCount=1 then
+          begin
+            FoundEnd.Y:= IndexLine;
+            FoundEnd.X:= IndexChar-1;
+            FoundPos.Y:= IndexLine;
+            FoundPos.X:= IndexChar-1-SLinePart_Len;
+          end
+          else
+          begin
+            FoundPos.Y:= IndexLine;
+            FoundPos.X:= SLinePart_Len;
+            FoundEnd.Y:= IndexLine-PartCount+1;
+            FoundEnd.X:= Strs.LinesLen[FoundEnd.Y] - _GetLenPart(PartCount-1);
+          end;
+
           //check syntax-elements
           if bOk then
-            bOk:= CheckTokens(IndexChar-1-SLinePart_Len, IndexLine);
+            bOk:= CheckTokensEd(FoundPos.X, FoundPos.Y, FoundEnd.X, FoundEnd.Y);
           if bOk then
           begin
-            if PartCount=1 then
-            begin
-              FMatchEdEnd.Y:= IndexLine;
-              FMatchEdEnd.X:= IndexChar-1;
-              FMatchEdPos.Y:= IndexLine;
-              FMatchEdPos.X:= IndexChar-1-SLinePart_Len;
-            end
-            else
-            begin
-              FMatchEdPos.Y:= IndexLine;
-              FMatchEdPos.X:= SLinePart_Len;
-              FMatchEdEnd.Y:= IndexLine-PartCount+1;
-              FMatchEdEnd.X:= Strs.LinesLen[FMatchEdEnd.Y] - _GetLenPart(PartCount-1);
-            end;
-            if AWithEvent then
-              DoOnFound;
+            FMatchEdPos:= FoundPos;
+            FMatchEdEnd:= FoundEnd;
+            DoOnFound(AWithEvent);
             Exit(true);
           end;
         end;
@@ -2094,6 +2207,209 @@ begin
 
   FDataString:= '';
   FCallbackString:= '';
+end;
+
+procedure TATEditorFinder.GetMarkerPos(out AX, AY: integer);
+var
+  Mark: TATMarkerItem;
+  Caret: TATCaretItem;
+  MarkX, MarkY: integer;
+  X1, Y1, X2, Y2: integer;
+  bSel: boolean;
+  i: integer;
+begin
+  AX:= -1;
+  AY:= -1;
+  if Editor.Markers.Count<>1 then
+  begin
+    if FinderCarets.Count=0 then exit;
+    Caret:= FinderCarets[0];
+    Caret.GetRange(X1, Y1, X2, Y2, bSel);
+    if bSel then
+    begin
+      AX:= X1;
+      AY:= Y1;
+    end;
+    exit;
+  end;
+
+  Mark:= Editor.Markers[0];
+  MarkX:= Mark.PosX;
+  MarkY:= Mark.PosY;
+  if OptBack then
+    Inc(MarkX, Mark.LineLen);
+
+  if FinderCarets.IsPosSelected(MarkX, MarkY) then
+  begin
+    AX:= MarkX;
+    AY:= MarkY;
+    exit;
+  end;
+
+  //if marker is not in selection, find first selection _after_ the marker,
+  //and return it's left side
+  for i:= 0 to FinderCarets.Count-1 do
+  begin
+    Caret:= FinderCarets[i];
+    Caret.GetRange(X1, Y1, X2, Y2, bSel);
+    if bSel then
+      if IsPosSorted(MarkX, MarkY, X1, Y1, false) then
+      begin
+        AX:= X1;
+        AY:= Y1;
+        exit;
+      end;
+  end;
+end;
+
+procedure TATEditorFinder.GetEditorSelRange(out AX1, AY1, AX2, AY2: integer;
+  out ASelText: UnicodeString);
+var
+  Mark: TATMarkerItem;
+  Caret: TATCaretItem;
+  bSel: boolean;
+begin
+  AX1:= -1;
+  AY1:= -1;
+  AX2:= -1;
+  AY2:= -1;
+  ASelText:= '';
+
+  if FPlaceMarker then
+  begin
+    if Editor.Markers.Count<>1 then exit;
+    Mark:= Editor.Markers[0];
+    if Mark.LineLen=0 then exit;
+    AX1:= Mark.PosX;
+    AY1:= Mark.PosY;
+    AX2:= Mark.PosX+Mark.LineLen;
+    AY2:= Mark.PosY;
+    if Mark.LineLen<0 then
+      SwapInt(AX1, AX2);
+  end
+  else
+  begin
+    if FinderCarets.Count<>1 then exit;
+    Caret:= FinderCarets[0];
+    Caret.GetRange(AX1, AY1, AX2, AY2, bSel);
+    if not bSel then exit;
+  end;
+
+ ASelText:= Editor.Strings.TextSubstring(AX1, AY1, AX2, AY2);
+end;
+
+
+function TATEditorFinder.DoAction_HighlightAllEditorMatches(
+  AColorBorder: TColor; AStyleBorder: TATLineStyle; ATagValue,
+  AMaxLines: integer; AScrollTo1st, AMoveCaret: boolean): integer;
+var
+  Results: TATFinderResults;
+  Res: TATFinderResult;
+  PosX, PosY, SelX, SelY: integer;
+  AttrRec: TATLinePart;
+  iRes, iLine: integer;
+const
+  MicromapMode: TATMarkerMicromapMode = mmmShowInTextAndMicromap;
+  //
+  function GetAttrObj: TATLinePartClass;
+  begin
+    Result:= TATLinePartClass.Create;
+    Result.Data:= AttrRec;
+    Result.ColumnTag:= 1; //tag of micromap column
+  end;
+  //
+begin
+  Result:= 0;
+  if Editor=nil then exit;
+
+  if Editor.Strings.Count>=AMaxLines then
+    exit;
+
+  Results:= TATFinderResults.Create;
+  try
+    try
+      DoAction_FindAll(Results, false);
+      Result:= Results.Count;
+    except
+      exit;
+    end;
+    if Results.Count=0 then exit;
+
+    FillChar(AttrRec, SizeOf(AttrRec), 0);
+    AttrRec.ColorBG:= clNone;
+    AttrRec.ColorFont:= clNone;
+    AttrRec.ColorBorder:= AColorBorder;
+    AttrRec.BorderDown:= AStyleBorder;
+    AttrRec.BorderLeft:= AStyleBorder;
+    AttrRec.BorderRight:= AStyleBorder;
+    AttrRec.BorderUp:= AStyleBorder;
+
+    for iRes:= 0 to Results.Count-1 do
+    begin
+      Res:= Results[iRes];
+      //single line attr
+      if Res.FPos.Y=Res.FEnd.Y then
+      begin
+        PosX:= Res.FPos.X;
+        PosY:= Res.FPos.Y;
+        SelY:= 0;
+        SelX:= Abs(Res.FEnd.X-Res.FPos.X);
+        Editor.Attribs.Add(PosX, PosY, ATagValue, SelX, SelY, GetAttrObj, 0, MicromapMode);
+      end
+      else
+      //add N attrs per each line of a match
+      for iLine:= Res.FPos.Y to Res.FEnd.Y do
+        if Editor.Strings.IsIndexValid(iLine) then
+        begin
+          PosY:= iLine;
+          SelY:= 0;
+          //attr on first line
+          if iLine=Res.FPos.Y then
+          begin
+            PosX:= Res.FPos.X;
+            SelX:= Editor.Strings.LinesLen[iLine];
+          end
+          else
+          //attr in final line
+          if iLine=Res.FEnd.Y then
+          begin
+            PosX:= 0;
+            SelX:= Res.FEnd.X;
+          end
+          else
+          //attr on middle line
+          begin
+            PosX:= 0;
+            SelX:= Editor.Strings.LinesLen[iLine];
+          end;
+
+          Editor.Attribs.Add(PosX, PosY, ATagValue, SelX, SelY, GetAttrObj, 0, MicromapMode);
+        end;
+    end;
+
+    Res:= Results.First;
+
+    if AScrollTo1st then
+    begin
+      if AMoveCaret then
+      begin
+        Editor.DoCaretSingle(Res.FPos.X, Res.FPos.Y);
+        Editor.DoEventCarets;
+      end;
+
+      Editor.DoShowPos(
+        Res.FPos,
+        FIndentHorz,
+        100{big value to center vertically},
+        true{AUnfold},
+        false{AllowUpdate}
+        );
+    end;
+
+    Editor.Update;
+  finally
+    FreeAndNil(Results);
+  end;
 end;
 
 end.

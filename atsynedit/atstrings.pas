@@ -13,16 +13,14 @@ interface
 uses
   {$ifdef windows} Windows, {$endif}
   SysUtils, Classes, Graphics,
-  FileUtil,
-  LCLVersion,
   ATStringProc,
-  ATStringProc_Utf8Detect,
+  ATStringProc_UTF8Detect,
+  ATStringProc_UTF8Decode,
   ATStrings_Undo,
   ATSynEdit_fgl,
   ATSynEdit_Gaps,
   ATSynEdit_Bookmarks,
   ATSynEdit_Gutter_Decor,
-  Math,
   EncConv;
 
 const
@@ -161,7 +159,9 @@ type
 
 type
   TATStringsGetCarets = function: TATPointArray of object;
+  TATStringsGetMarkers = function: TATInt64Array of object;
   TATStringsSetCarets = procedure(const ACarets: TATPointArray) of object;
+  TATStringsSetMarkers = procedure(const AMarkers: TATInt64Array) of object;
   TATStringsLogEvent = procedure(Sender: TObject; ALine: integer) of object;
   TATStringsChangeEvent = procedure(Sender: TObject; AChange: TATLineChangeKind; ALine, AItemCount: integer) of object;
   TATStringsChangeBlockEvent = procedure(Sender: TObject; const AStartPos, AEndPos: TPoint; 
@@ -181,6 +181,7 @@ type
     FGutterDecor2: TATGutterDecor;
     FUndoList,
     FRedoList: TATUndoList;
+    FUndoLimit: integer;
     FEndings: TATLineEnds;
     FEncoding: TATFileEncoding;
     FEncodingDetect: boolean;
@@ -198,7 +199,9 @@ type
     FProgressValue: integer;
     FProgressKind: TATStringsProgressKind;
     FOnGetCaretsArray: TATStringsGetCarets;
+    FOnGetMarkersArray: TATStringsGetMarkers;
     FOnSetCaretsArray: TATStringsSetCarets;
+    FOnSetMarkersArray: TATStringsSetMarkers;
     FOnProgress: TNotifyEvent;
     FOnLog: TATStringsLogEvent;
     FOnChange: TATStringsChangeEvent;
@@ -210,6 +213,8 @@ type
       //because OnChangeBlock is called for all lines at once
     FLastCommandChangedLines: integer;
     FEnabledBookmarksUpdate: boolean;
+    FEnabledChangeEvents: boolean;
+    FLoadingForcedANSI: boolean;
 
     function Compare_Asc(Key1, Key2: Pointer): Integer;
     function Compare_AscNoCase(Key1, Key2: Pointer): Integer;
@@ -219,12 +224,10 @@ type
       const AText: atString; AEnd: TATLineEnds; ALineState: TATLineState);
     function DebugText: string;
     function DoCheckFilled: boolean;
-    procedure DoEventLog(ALine: integer);
-    procedure DoEventChange(AChange: TATLineChangeKind; ALineIndex,
-      AItemCount: integer);
     procedure DoFinalizeSaving;
     procedure DoUndoRedo(AUndo: boolean; AGrouped: boolean);
     function GetCaretsArray: TATPointArray;
+    function GetMarkersArray: TATInt64Array;
     function GetLine(AIndex: integer): atString;
     function GetLineAscii(AIndex: integer): boolean;
     function GetLineBlank(AIndex: integer): boolean;
@@ -252,6 +255,7 @@ type
     procedure LineInsertEx(ALineIndex: integer; const AString: atString; AEnd: TATLineEnds;
       AWithEvent: boolean=true);
     procedure SetCaretsArray(const L: TATPointArray);
+    procedure SetMarkersArray(const L: TATInt64Array);
     procedure SetEndings(AValue: TATLineEnds);
     procedure SetLine(AIndex: integer; const AValue: atString);
     procedure SetLineEnd(AIndex: integer; AValue: TATLineEnds);
@@ -260,7 +264,7 @@ type
     procedure SetLineSep(AIndex: integer; AValue: TATLineSeparator);
     procedure SetLineState(AIndex: integer; AValue: TATLineState);
     procedure SetLineUpdated(AIndex: integer; AValue: boolean);
-    procedure DoLoadFromStream(Stream: TStream);
+    procedure DoLoadFromStream(Stream: TStream; out AForcedToANSI: boolean);
     procedure DoDetectEndings;
     procedure DoFinalizeLoading;
     procedure DoClearLineStates(ASaved: boolean);
@@ -272,7 +276,7 @@ type
       AHardMarkedNext, AUnmodifiedNext: boolean);
     procedure DoAddUpdate(N: integer; AAction: TATEditAction);
   public
-    constructor Create; virtual;
+    constructor Create(AUndoLimit: integer); virtual;
     destructor Destroy; override;
     procedure Clear;
     procedure ClearSeparators;
@@ -316,6 +320,7 @@ type
     property EncodingDetect: boolean read FEncodingDetect write FEncodingDetect;
     property EncodingDetectDefaultUtf8: boolean read FEncodingDetectDefaultUtf8 write FEncodingDetectDefaultUtf8;
     property Endings: TATLineEnds read FEndings write SetEndings;
+    property LoadingForcedANSI: boolean read FLoadingForcedANSI;
     property ListUpdates: TATIntegerList read FListUpdates;
     property ListUpdatesHard: boolean read FListUpdatesHard write FListUpdatesHard;
     property Modified: boolean read FModified write SetModified;
@@ -326,6 +331,7 @@ type
     property ProgressKind: TATStringsProgressKind read FProgressKind write FProgressKind;
     property ChangeBlockActive: boolean read FChangeBlockActive write FChangeBlockActive;
     property EnabledBookmarksUpdate: boolean read FEnabledBookmarksUpdate write FEnabledBookmarksUpdate;
+    property EnabledChangeEvents: boolean read FEnabledChangeEvents write FEnabledChangeEvents;
     property Gaps: TATGaps read FGaps;
     property Bookmarks: TATBookmarks read FBookmarks;
     property Bookmarks2: TATBookmarks read FBookmarks2;
@@ -381,7 +387,9 @@ type
     function TextSubstringLength(AX1, AY1, AX2, AY2: integer; const AEolString: string=#10): integer;
     //undo
     property OnGetCaretsArray: TATStringsGetCarets read FOnGetCaretsArray write FOnGetCaretsArray;
+    property OnGetMarkersArray: TATStringsGetMarkers read FOnGetMarkersArray write FOnGetMarkersArray;
     property OnSetCaretsArray: TATStringsSetCarets read FOnSetCaretsArray write FOnSetCaretsArray;
+    property OnSetMarkersArray: TATStringsSetMarkers read FOnSetMarkersArray write FOnSetMarkersArray;
     procedure SetGroupMark;
     procedure BeginUndoGroup;
     procedure EndUndoGroup;
@@ -397,6 +405,8 @@ type
     property RedoAsString: string read GetRedoAsString write SetRedoAsString;
     procedure DoClearUndo(ALocked: boolean = false);
     procedure DoClearLineStatesUpdated;
+    procedure DoEventLog(ALine: integer);
+    procedure DoEventChange(AChange: TATLineChangeKind; ALineIndex, AItemCount: integer);
     //misc
     procedure DoSaveLastEditPos(AX: integer=-1; AY: integer=-1);
     procedure DoGotoLastEditPos;
@@ -411,15 +421,24 @@ type
     property OnChangeBlock: TATStringsChangeBlockEvent read FOnChangeBlock write FOnChangeBlock;
   end;
 
+type
+  TBufferUTF8State = ATStringProc_Utf8Detect.TBufferUTF8State;
+
 function ATStrings_To_StringList(AStr: TATStrings): TStringList;
-function IsStreamWithUt8NoBom(Stream: TStream; BufSizeKb: word): boolean;
-function IsStreamWithUtf16NoBom(Stream: TStream; BufSizeWords: integer; out IsLE: boolean): boolean;
+function DetectStreamUtf8NoBom(Stream: TStream; BufSizeKb: word): TBufferUTF8State;
+function DetectStreamUtf16NoBom(Stream: TStream; BufSizeWords: integer; out IsLE: boolean): boolean;
 
 var
   GlobalDetectUtf8BufferKb: integer = 8;
   GlobalDetectUf16BufferWords: integer = 5;
 
 implementation
+
+uses
+  FileUtil,
+  LCLVersion,
+  Math,
+  ATStringProc_Separator;
 
 const
   cSignUTF8: string = #$EF#$BB#$BF;
@@ -595,6 +614,11 @@ procedure TATStringItem.SetLineA(const S: string);
 var
   NLen, N: integer;
 begin
+  LineStateToChanged;
+  Ex.HasTab:= 0; //cFlagUnknown
+  Ex.HasAsciiNoTabs:= 0; //cFlagUnknown
+  Ex.Updated:= true;
+
   NLen:= Length(S);
   if NLen=0 then
   begin
@@ -612,15 +636,25 @@ begin
   begin
     Ex.Wide:= true;
     SetLength(Buf, NLen*2);
-    N:= Utf8ToUnicode(PUnicodeChar(PChar(Buf)), NLen, PChar(S), NLen);
-    if N>0 then
-      SetLength(Buf, 2*(N-1));
+    try
+      //this func is the same as Utf8ToUnicode but raises exception
+      N:= CustomUtf8ToUnicode(PUnicodeChar(PChar(Buf)), NLen, PChar(S), NLen);
+      if N>0 then
+        SetLength(Buf, 2*(N-1))
+      else
+        Buf:= '';
+    except
+      //failed to load as UTF8
+      //load it again with FPC which replaces bad characters with '?'
+      //and raise exception, to allow outer procedure to load file again
+      N:= Utf8ToUnicode(PUnicodeChar(PChar(Buf)), NLen, PChar(S), NLen);
+      if N>0 then
+        SetLength(Buf, 2*(N-1))
+      else
+        Buf:= '';
+      RaiseUTF8TextError;
+    end;
   end;
-
-  LineStateToChanged;
-  Ex.HasTab:= 0; //cFlagUnknown
-  Ex.HasAsciiNoTabs:= 0; //cFlagUnknown
-  Ex.Updated:= true;
 end;
 
 procedure TATStringItem.Init(const S: string; AEnd: TATLineEnds);
@@ -1131,17 +1165,19 @@ begin
 end;
 
 
-constructor TATStrings.Create;
+constructor TATStrings.Create(AUndoLimit: integer);
 begin
   FList:= TATStringItemList.Create;
   FListUpdates:= TATIntegerList.Create;
   FListUpdatesHard:= false;
-  FUndoList:= TATUndoList.Create;
-  FRedoList:= TATUndoList.Create;
+  FUndoLimit:= AUndoLimit;
+  FUndoList:= TATUndoList.Create(FUndoLimit);
+  FRedoList:= TATUndoList.Create(FUndoLimit);
   FGaps:= TATGaps.Create;
   FBookmarks:= TATBookmarks.Create;
   FBookmarks2:= TATBookmarks.Create;
   FEnabledBookmarksUpdate:= true;
+  FEnabledChangeEvents:= true;
 
   FEncoding:= cEncUTF8;
   FEncodingDetect:= true;
@@ -1173,6 +1209,8 @@ begin
   FOnChangeBlock:= nil;
   FOnGetCaretsArray:= nil;
   FOnSetCaretsArray:= nil;
+  FOnGetMarkersArray:= nil;
+  FOnSetMarkersArray:= nil;
   FOnProgress:= nil;
   FOnLog:= nil;
 
@@ -1592,6 +1630,7 @@ begin
   Inc(FUndoGroupCounter);
   if Assigned(FUndoList) then
   begin
+    if FUndoList.Locked then exit;
     //softmark if not-nested call
     if FUndoGroupCounter=1 then
       FUndoList.SoftMark:= true;
@@ -1602,13 +1641,17 @@ end;
 
 procedure TATStrings.EndUndoGroup;
 begin
-  Dec(FUndoGroupCounter);
-  if FUndoGroupCounter<0 then
+  if FUndoGroupCounter>0 then
+    Dec(FUndoGroupCounter)
+  else
     FUndoGroupCounter:= 0;
 
   if FUndoGroupCounter=0 then
     if Assigned(FUndoList) then
+    begin
+      if FUndoList.Locked then exit;
       FUndoList.HardMark:= false;
+    end;
 end;
 
 procedure TATStrings.DoUndoSingle(ACurList: TATUndoList;
@@ -1621,6 +1664,7 @@ var
   AEnd: TATLineEnds;
   ALineState: TATLineState;
   ACarets: TATPointArray;
+  AMarkers: TATInt64Array;
   NCount: integer;
   OtherList: TATUndoList;
 begin
@@ -1640,6 +1684,7 @@ begin
   AEnd:= Item.ItemEnd;
   ALineState:= Item.ItemLineState;
   ACarets:= Item.ItemCarets;
+  AMarkers:= Item.ItemMarkers;
   ASoftMarked:= Item.ItemSoftMark;
   AHardMarked:= Item.ItemHardMark;
   NCount:= ACurList.Count;
@@ -1714,6 +1759,8 @@ begin
     end;
 
     SetCaretsArray(ACarets);
+    SetMarkersArray(AMarkers);
+
     ActionDeleteDupFakeLines;
   finally
     ACurList.Locked:= false;
@@ -1740,13 +1787,29 @@ end;
 function TATStrings.GetCaretsArray: TATPointArray;
 begin
   if Assigned(FOnGetCaretsArray) then
-    Result:= FOnGetCaretsArray();
+    Result:= FOnGetCaretsArray()
+  else
+    SetLength(Result, 0);
+end;
+
+function TATStrings.GetMarkersArray: TATInt64Array;
+begin
+  if Assigned(FOnGetMarkersArray) then
+    Result:= FOnGetMarkersArray()
+  else
+    SetLength(Result, 0);
 end;
 
 procedure TATStrings.SetCaretsArray(const L: TATPointArray);
 begin
   if Assigned(FOnSetCaretsArray) then
     FOnSetCaretsArray(L);
+end;
+
+procedure TATStrings.SetMarkersArray(const L: TATInt64Array);
+begin
+  if Assigned(FOnSetMarkersArray) then
+    FOnSetMarkersArray(L);
 end;
 
 procedure TATStrings.DoAddUndo(AAction: TATEditAction; AIndex: integer;
@@ -1769,7 +1832,7 @@ begin
   begin
     if FUndoList.Locked then exit;
     if (FUndoList.Count>0) and (FUndoList.Last.ItemAction=AAction) then exit;
-    FUndoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray);
+    FUndoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray, GetMarkersArray);
     exit;
   end;
 
@@ -1780,14 +1843,14 @@ begin
   if not FUndoList.Locked then
   begin
     DoAddUpdate(AIndex, AAction);
-    FUndoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray);
+    FUndoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray, GetMarkersArray);
   end
   else
   //called from Undo - add to Redo
   if not FRedoList.Locked then
   begin
     DoAddUpdate(AIndex, AAction);
-    FRedoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray);
+    FRedoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray, GetMarkersArray);
   end;
 end;
 
@@ -2206,12 +2269,15 @@ end;
 
 procedure TATStrings.DoEventLog(ALine: integer); inline;
 begin
+  if not FEnabledChangeEvents then exit;
   if Assigned(FOnLog) then
     FOnLog(Self, ALine);
 end;
 
 procedure TATStrings.DoEventChange(AChange: TATLineChangeKind; ALineIndex, AItemCount: integer);
 begin
+  if not FEnabledChangeEvents then exit;
+
   FGaps.Update(AChange, ALineIndex, AItemCount);
 
   if FEnabledBookmarksUpdate then

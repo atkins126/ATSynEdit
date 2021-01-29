@@ -15,6 +15,12 @@ uses
   ATSynEdit_FGL;
 
 type
+  TATBookmarkAutoDelete = (bmadDontDelete, bmadDelete, bmadOption);
+
+var
+  OptBookmarksAutoDelete: boolean = false;
+
+type
   { TATBookmarkData }
 
   TATBookmarkData = packed record
@@ -22,7 +28,7 @@ type
     Hint: string[55];
     LineNum: integer;
     Kind: word;
-    DeleteOnDelLine: boolean;
+    AutoDelete: TATBookmarkAutoDelete;
     ShowInBookmarkList: boolean;
   end;
 
@@ -67,6 +73,9 @@ type
   end;
 
 implementation
+
+uses
+  Math;
 
 { TATBookmarkItems }
 
@@ -226,8 +235,8 @@ procedure TATBookmarks.Update(AChange: TATLineChangeKind;
   ALine, AItemCount, ALineCount: integer);
 var
   Item: PATBookmarkItem;
-  //bMovedHere: boolean;
-  NIndexPlaced, i: integer;
+  NIndexPlaced, NewLine, i: integer;
+  fAutoDel: TATBookmarkAutoDelete;
 begin
   case AChange of
     cLineChangeEdited:
@@ -256,12 +265,15 @@ begin
         for i:= 0 to AItemCount-1 do
         begin
           NIndexPlaced:= Find(ALine+i);
-          //bMovedHere:= false;
 
-          if (NIndexPlaced>=0) and FList.ItemPtr(NIndexPlaced)^.Data.DeleteOnDelLine then
+          if (NIndexPlaced>=0) then
           begin
-            Delete(NIndexPlaced);
-            NIndexPlaced:= -1;
+            fAutoDel:= FList.ItemPtr(NIndexPlaced)^.Data.AutoDelete;
+            if (fAutoDel=bmadDelete) or ((fAutoDel=bmadOption) and OptBookmarksAutoDelete) then
+            begin
+              Delete(NIndexPlaced);
+              NIndexPlaced:= -1;
+            end;
           end;
         end;
 
@@ -272,20 +284,13 @@ begin
           //spec case for bookmark on last line, keep it if deleting last line
           if (Item^.Data.LineNum>ALine) or (Item^.Data.LineNum=ALineCount-1) then
           begin
-            Item^.Data.LineNum-= AItemCount;
-            {
-            if Item.Data.LineNum=ALine then
-              bMovedHere:= true;
-            }
+            NewLine:= Max(Item^.Data.LineNum-AItemCount, ALine);
+            Item^.Data.LineNum:= NewLine;
           end;
         end;
 
-        {
-        //delete new duplicate
-        if bMovedHere then
-          if NIndexPlaced>=0 then
-            Delete(NIndexPlaced);
-        }
+        //dups may appeared, if many bookmarks were in 1 block
+        DeleteDups;
       end;
   end;
 end;

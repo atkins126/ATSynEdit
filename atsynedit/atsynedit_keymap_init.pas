@@ -67,8 +67,8 @@ begin
 
   M.Add(cCommand_ForceFinalEndOfLine, 'force final end-of-line', [], []);
 
-  M.Add(cCommand_TextDeleteLine, 'delete line', [cXControl+'+Y'], []);
-  M.Add(cCommand_TextDuplicateLine, 'duplicate line', [cXControl+'+D'], []);
+  M.Add(cCommand_TextDeleteLine, 'delete line(s)', [cXControl+'+Y'], []);
+  M.Add(cCommand_TextDuplicateLine, 'duplicate line(s)', [cXControl+'+D'], []);
 
   M.Add(cCommand_GotoTextBegin,      'go to text begin',          [cXControl+'+Home'], []);
   M.Add(cCommand_GotoTextBegin_Sel,  'go to text begin + select', [cXControl+'+Shift+Home'], []);
@@ -130,9 +130,11 @@ begin
 
   M.Add(cCommand_TextDeleteWordPrev, 'delete word previous', [cXControl+'+Bksp'], []);
   M.Add(cCommand_TextDeleteWordNext, 'delete word next', [cXControl+'+Del'], []);
+  M.Add(cCommand_TextDeleteWordEntire, 'delete word', [], []);
   M.Add(cCommand_TextDeleteToLineBegin, 'delete to line begin', [], []);
   M.Add(cCommand_TextDeleteToLineEnd, 'delete to line end', [cXControl+'+K'], []);
-  M.Add(cCommand_TextDeleteToTextEnd, 'delete to text end', [], []);
+  M.Add(cCommand_TextDeleteToTextBegin, 'delete to document begin', [], []);
+  M.Add(cCommand_TextDeleteToTextEnd, 'delete to document end', [], []);
 
   M.Add(cCommand_TextIndent, 'indent selection', [cXControl+'+I'], []);
   M.Add(cCommand_TextUnindent, 'unindent selection', [cXControl+'+Shift+I'], ['Shift+Tab']);
@@ -252,6 +254,7 @@ begin
 
   M.Add(cCommand_TextDeleteWordPrev, 'delete word left', [cXControl+'+Bksp'], []);
   M.Add(cCommand_TextDeleteWordNext, 'delete word right', [cXControl+'+Del'], []);
+  M.Add(cCommand_TextDeleteWordEntire, 'delete word', [], []);
 
   M.Add(cCommand_Undo, 'perform undo', [cXControl+'+Z'], []);
   M.Add(cCommand_Redo, 'perform redo', [cXControl+'+Shift+Z'], []);

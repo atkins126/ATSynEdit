@@ -5,11 +5,13 @@ License: MPL 2.0 or LGPL
 unit ATSynEdit_Carets;
 
 {$mode objfpc}{$H+}
+{$ModeSwitch advancedrecords}
 
 interface
 
 uses
   Classes, SysUtils,
+  LCLIntf,
   ATStringProc,
   ATStringProc_Separator;
 
@@ -47,6 +49,8 @@ type
     function Change(APosX, APosY, AEndX, AEndY: integer): boolean;
     procedure SwapSelection;
     function IsForwardSelection: boolean;
+    function IsMultilineSelection: boolean;
+    function FirstTouchedLine: integer;
   end;
 
 type
@@ -70,10 +74,30 @@ type
     );
 
 type
-  TATCaretSelection = record
-    PosX, PosY, EndX, EndY: integer;
+  { TATCaretSelections }
+  {
+  why new record here? we could make methods in TATCarets, but during loops,
+  we must always a) skip carets w/o selection,
+  b) call CaretItem.GetRange to get _sorted_ range.
+  code for binary search (Is***Selected) would be ugly.
+  }
+
+  TATCaretSelections = record
+  private
+    type TATCaretSelection = record
+      PosX, PosY, EndX, EndY: integer;
+    end;
+  public
+    Data: array of TATCaretSelection;
+    procedure Clear;
+    function IsEmpty: boolean;
+    function IsMultiline: boolean;
+    function IsLineWithSelection(ALine: integer): boolean;
+    function IsLineAllSelected(ALine, ALineLen: integer): boolean;
+    function IsPosSelected(AX, AY: integer): boolean;
+    function IsRangeSelected(AX1, AY1, AX2, AY2: integer): TATRangeSelection;
+    procedure GetRangesInLineAfterPoint(AX, AY: integer; out ARanges: TATSimpleRangeArray);
   end;
-  TATCaretSelections = array of TATCaretSelection;
 
 type
   { TATCarets }
@@ -99,6 +123,7 @@ type
     procedure Delete(N: integer);
     function Count: integer; inline;
     function IsIndexValid(N: integer): boolean; inline;
+    function IsPosSelected(AX, AY: integer; AllowAtEdge: boolean=false): boolean;
     property Items[N: integer]: TATCaretItem read GetItem; default;
     procedure Add(APosX, APosY: integer; AEndX: integer=-1; AEndY: integer=-1);
     procedure Sort(AJoinAdjacentCarets: boolean=true);
@@ -110,7 +135,8 @@ type
     function IsLineListed(APosY: integer): boolean;
     function IsLineWithSelection(APosY: integer): boolean;
     function IsSelection: boolean;
-    procedure GetSelections(out D: TATCaretSelections);
+    function IsAnyCaretInVisibleRect(const R: TRect): boolean;
+    procedure GetSelections(var D: TATCaretSelections);
     function CaretAtEdge(AEdge: TATCaretEdge): TPoint;
     function DebugText: string;
     property ManyAllowed: boolean read FManyAllowed write FManyAllowed;
@@ -172,6 +198,189 @@ begin
   n1:= n2;
   n2:= n;
 end;
+
+{ TATCaretSelections }
+
+procedure TATCaretSelections.Clear;
+begin
+  SetLength(Data, 0);
+end;
+
+function TATCaretSelections.IsEmpty: boolean;
+begin
+  Result:= Length(Data)=0;
+end;
+
+function TATCaretSelections.IsMultiline: boolean;
+var
+  i: integer;
+begin
+  for i:= 0 to High(Data) do
+    if Data[i].EndY<>Data[i].PosY then
+      exit(true);
+  Result:= false;
+end;
+
+function TATCaretSelections.IsLineWithSelection(ALine: integer): boolean;
+var
+  Y1, Y2, X2: integer;
+  a, b, m: integer;
+begin
+  Result:= false;
+  a:= 0;
+  b:= High(Data);
+
+  repeat
+    if a>b then exit;
+    m:= (a+b+1) div 2;
+
+    Y1:= Data[m].PosY;
+    X2:= Data[m].EndX;
+    Y2:= Data[m].EndY;
+
+    if (X2=0) and (Y2>0) then
+      Dec(Y2);
+
+    if ALine<Y1 then
+      b:= m-1
+    else
+    if ALine<=Y2 then
+      exit(true)
+    else
+      a:= m+1;
+  until false;
+end;
+
+function TATCaretSelections.IsLineAllSelected(ALine, ALineLen: integer): boolean;
+var
+  X1, Y1, Y2, X2: integer;
+  a, b, m: integer;
+begin
+  Result:= false;
+  a:= 0;
+  b:= High(Data);
+
+  repeat
+    if a>b then exit;
+    m:= (a+b+1) div 2;
+
+    X1:= Data[m].PosX;
+    Y1:= Data[m].PosY;
+    X2:= Data[m].EndX;
+    Y2:= Data[m].EndY;
+
+    if not IsPosSorted(X1, Y1, 0, ALine, true) then
+      b:= m-1
+    else
+    if IsPosSorted(ALineLen, ALine, X2, Y2, true) then
+      exit(true)
+    else
+      a:= m+1;
+  until false;
+end;
+
+
+function TATCaretSelections.IsPosSelected(AX, AY: integer): boolean;
+var
+  X1, Y1, X2, Y2: integer;
+  a, b, m: integer;
+begin
+  Result:= false;
+  a:= 0;
+  b:= High(Data);
+
+  repeat
+    if a>b then exit;
+    m:= (a+b+1) div 2;
+
+    X1:= Data[m].PosX;
+    Y1:= Data[m].PosY;
+    X2:= Data[m].EndX;
+    Y2:= Data[m].EndY;
+
+    case IsPosInRange(AX, AY, X1, Y1, X2, Y2) of
+      cRelateInside:
+        exit(true);
+      cRelateBefore:
+        b:= m-1;
+      cRelateAfter:
+        a:= m+1;
+    end;
+  until false;
+end;
+
+function TATCaretSelections.IsRangeSelected(AX1, AY1, AX2, AY2: integer): TATRangeSelection;
+var
+  X1, Y1, X2, Y2: integer;
+  a, b, m: integer;
+  bLeft, bRight: TATPosRelation;
+begin
+  Result:= cRangeAllUnselected;
+  a:= 0;
+  b:= High(Data);
+
+  repeat
+    if a>b then exit;
+    m:= (a+b+1) div 2;
+
+    X1:= Data[m].PosX;
+    Y1:= Data[m].PosY;
+    X2:= Data[m].EndX;
+    Y2:= Data[m].EndY;
+
+    bLeft:= IsPosInRange(AX1, AY1, X1, Y1, X2, Y2);
+    if (bLeft=cRelateAfter) then
+    begin
+      a:= m+1;
+      Continue;
+    end;
+
+    bRight:= IsPosInRange(AX2, AY2, X1, Y1, X2, Y2, true);
+    if (bRight=cRelateBefore) then
+    begin
+      b:= m-1;
+      Continue;
+    end;
+
+    if (bLeft=cRelateInside) and (bRight=cRelateInside) then
+      exit(cRangeAllSelected)
+    else
+      exit(cRangePartlySelected);
+  until false;
+end;
+
+procedure TATCaretSelections.GetRangesInLineAfterPoint(AX, AY: integer; out
+  ARanges: TATSimpleRangeArray);
+var
+  X1, Y1, X2, Y2, XFrom, XTo: integer;
+  i: integer;
+begin
+  SetLength(ARanges, 0);
+  for i:= 0 to High(Data) do
+  begin
+    X1:= Data[i].PosX;
+    Y1:= Data[i].PosY;
+    X2:= Data[i].EndX;
+    Y2:= Data[i].EndY;
+
+    if (Y1>AY) then Break; //caret is fully after line AY: stop
+    if (Y2<AY) then Continue; //caret is fully before line AY
+
+    if (Y1<AY) then XFrom:= 0 else XFrom:= X1;
+    if (Y2>AY) then XTo:= MaxInt else XTo:= X2;
+
+    if XTo<=AX then Continue;
+    if XFrom<AX then XFrom:= AX;
+
+    SetLength(ARanges, Length(ARanges)+1);
+    with ARanges[High(ARanges)] do
+    begin
+      NFrom:= XFrom;
+      NTo:= XTo;
+    end;
+  end;
+end;
+
 
 { TATCaretItem }
 
@@ -245,6 +454,19 @@ end;
 function TATCaretItem.IsForwardSelection: boolean;
 begin
   Result:= (PosY>=0) and IsPosSorted(EndX, EndY, PosX, PosY, false);
+end;
+
+function TATCaretItem.IsMultilineSelection: boolean;
+begin
+  Result:= (EndY>=0) and (EndY<>PosY);
+end;
+
+function TATCaretItem.FirstTouchedLine: integer;
+begin
+  if (EndY>=0) and (EndY<PosY) then
+    Result:= EndY
+  else
+    Result:= PosY;
 end;
 
 procedure TATCaretItem.SelectNone;
@@ -532,6 +754,23 @@ begin
   Result:= false;
 end;
 
+function TATCarets.IsAnyCaretInVisibleRect(const R: TRect): boolean;
+var
+  Caret: TATCaretItem;
+  Pnt: TPoint;
+  i: integer;
+begin
+  Result:= false;
+  for i:= 0 to Count-1 do
+  begin
+    Caret:= Items[i];
+    Pnt.X:= Caret.CoordX;
+    Pnt.Y:= Caret.CoordY;
+    if PtInRect(R, Pnt) then
+      exit(true);
+  end;
+end;
+
 
 function TATCarets.CaretAtEdge(AEdge: TATCaretEdge): TPoint;
 var
@@ -742,13 +981,13 @@ begin
     Sort;
 end;
 
-procedure TATCarets.GetSelections(out D: TATCaretSelections);
+procedure TATCarets.GetSelections(var D: TATCaretSelections);
 var
   Item: TATCaretItem;
   NLen, i: integer;
   X1, Y1, X2, Y2: integer;
 begin
-  SetLength(D, Count);
+  SetLength(D.Data, Count);
   NLen:= 0;
 
   for i:= 0 to Count-1 do
@@ -765,18 +1004,36 @@ begin
         SwapInt(Y1, Y2);
         SwapInt(X1, X2);
       end;
-      D[NLen].PosX:= X1;
-      D[NLen].PosY:= Y1;
-      D[NLen].EndX:= X2;
-      D[NLen].EndY:= Y2;
+      D.Data[NLen].PosX:= X1;
+      D.Data[NLen].PosY:= Y1;
+      D.Data[NLen].EndX:= X2;
+      D.Data[NLen].EndY:= Y2;
       Inc(NLen);
     end;
   end;
 
   //don't realloc in a loop
-  SetLength(D, NLen);
+  SetLength(D.Data, NLen);
 end;
 
+
+function TATCarets.IsPosSelected(AX, AY: integer; AllowAtEdge: boolean): boolean;
+var
+  Caret: TATCaretItem;
+  X1, Y1, X2, Y2: integer;
+  bSel: boolean;
+  i: integer;
+begin
+  Result:= false;
+  for i:= 0 to Count-1 do
+  begin
+    Caret:= Items[i];
+    Caret.GetRange(X1, Y1, X2, Y2, bSel);
+    if bSel then
+      if IsPosInRange(AX, AY, X1, Y1, X2, Y2, AllowAtEdge)=cRelateInside then
+        exit(true);
+  end;
+end;
 
 end.
 

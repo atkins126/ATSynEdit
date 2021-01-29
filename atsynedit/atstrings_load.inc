@@ -25,11 +25,10 @@ begin
     else
       Result:= false;
   end;
-
 end;
 
 
-function IsStreamWithUtf16NoBom(Stream: TStream; BufSizeWords: integer; out IsLE: boolean): boolean;
+function DetectStreamUtf16NoBom(Stream: TStream; BufSizeWords: integer; out IsLE: boolean): boolean;
 var
   Buf: array[0..80] of word;
   BufItem: word;
@@ -73,14 +72,14 @@ begin
 end;
 
 
-function IsStreamWithUt8NoBom(Stream: TStream; BufSizeKb: word): boolean;
+function DetectStreamUtf8NoBom(Stream: TStream; BufSizeKb: word): TBufferUTF8State;
 const
   cMinLen = 10;
 var
   Buf: PChar;
   Size: integer;
 begin
-  Result:= false;
+  Result:= u8sUnknown;
   if Stream.Size<cMinLen then Exit;
 
   if BufSizeKb=0 then BufSizeKb:= 1;
@@ -91,18 +90,71 @@ begin
     Stream.Position:= 0;
     Stream.Read(Buf^, Size-1{trail zero});
     Stream.Position:= 0;
-    Result:= IsBufferUtf8(Buf, true);
+    Result:= IsBufferUtf8(Buf, Size-1, true);
   finally
     FreeMem(Buf);
   end;
 end;
 
-procedure DoDetectStreamEncoding(Stream: TStream;
+function DetectStreamEncodingByPythonId(Stream: TStream; var AEnc: TATFileEncoding; var AEncCodepage: TEncConvId): boolean;
+// https://docs.python.org/3/reference/lexical_analysis.html#encoding-declarations
+const
+  BufSize = 100;
+  cRegex = '^.+coding[=:]\s*([-\w.]+)';
+  cRegexGroup = 1;
+var
+  Buf, SLine, SEncId: string;
+  Sep: TATStringSeparator;
+  i: integer;
+begin
+  Result:= false;
+  Buf:= StringOfChar(' ', BufSize);
+  Stream.Position:= 0;
+  Stream.Read(Buf[1], Length(Buf));
+  Sep.Init(Buf, #10); //don't support CR separator yet
+
+  //detect by first 2 lines, 2nd used if 1st is comment
+  for i:= 1 to 2 do
+    if Sep.GetItemStr(SLine) then
+    begin
+      if SLine='' then exit;
+
+      //support several line comments, not all
+      if
+        not SBeginsWith(SLine, '#') and
+        not SBeginsWith(SLine, ';') and
+        not SBeginsWith(SLine, '//') and
+        not SBeginsWith(SLine, '--') then exit;
+
+      SEncId:= SFindRegexMatch(SLine, cRegex, cRegexGroup, false, false, false);
+      if SEncId<>'' then
+      begin
+        AEncCodepage:= EncConvFindEncoding(SEncId);
+        case AEncCodepage of
+          eidUTF8,
+          eidUTF8BOM,
+          eidUCS2LE,
+          eidUCS2BE:
+            begin
+              AEnc:= cEncUTF8;
+              AEncCodepage:= eidUTF8;
+            end
+          else
+            AEnc:= cEncAnsi;
+        end;
+        Result:= true;
+        exit;
+      end;
+    end;
+end;
+
+procedure DetectStreamEncoding(Stream: TStream;
   var Enc: TATFileEncoding;
+  var EncCodepage: TEncConvId;
   out SignLen: integer;
   out EncWithBom: boolean;
-  BufSizeKb: integer;
-  BufSizeWords: integer);
+  BufSizeUTF8: integer;
+  BufSizeUTF16: integer);
 var
   IsLE: boolean;
 begin
@@ -149,16 +201,26 @@ begin
     Exit
   end;
 
-  if BufSizeKb>0 then
-    if IsStreamWithUt8NoBom(Stream, BufSizeKb) then
-    begin
-      Enc:= cEncUTF8;
-      EncWithBom:= false;
-      Exit
+  if BufSizeUTF8>0 then
+    case DetectStreamUtf8NoBom(Stream, BufSizeUTF8) of
+      u8sYes:
+        begin
+          Enc:= cEncUTF8;
+          EncWithBom:= false;
+          Exit
+        end;
+      u8sNo:
+        begin
+          // https://github.com/Alexey-T/CudaText/issues/2928
+          Enc:= cEncAnsi;
+        end;
     end;
 
-  if BufSizeWords>0 then
-    if IsStreamWithUtf16NoBom(Stream, BufSizeWords, IsLE) then
+  if DetectStreamEncodingByPythonId(Stream, Enc, EncCodepage) then
+    Exit;
+
+  if BufSizeUTF16>0 then
+    if DetectStreamUtf16NoBom(Stream, BufSizeUTF16, IsLE) then
     begin
       if IsLE then
         Enc:= cEncWideLE
@@ -287,11 +349,13 @@ begin
   end;
 end;
 
-procedure TATStrings.DoLoadFromStream(Stream: TStream);
+procedure TATStrings.DoLoadFromStream(Stream: TStream; out AForcedToANSI: boolean);
 var
   Buf: PAnsiChar;
   BufSize: int64;
   CharSize: integer;
+  NSignatureLen: integer;
+  NStreamSize: Int64;
   //------
   procedure _FindNextEol(AFromPos: integer;
     out AFoundPos: integer;
@@ -325,62 +389,14 @@ var
     until false;
   end;
   //------
-var
-  NStart, NEnd, NCounted, Len, NSignatureLen: integer;
-  NStreamSize: Int64;
-  SA, SUtf8: string;
-  SWide: UnicodeString;
-  SQuad: UCS4String;
-  LineEnd: TATLineEnds;
-  bWithBom: boolean;
-begin
-  Clear;
-
-  bWithBom:= false;
-  NStreamSize:= Stream.Size;
-  NSignatureLen:= 0;
-
-  if NStreamSize>(cMaxFileSizeMbToDetectEncoding*1024*1024) then
+  procedure _LoadItems;
+  var
+    Len, NStart, NEnd, NCounted: integer;
+    LineEnd: TATLineEnds;
+    SA, SUtf8: string;
+    SWide: UnicodeString;
+    SQuad: UCS4String;
   begin
-    //don't set codepages like cp437 for huge files, it's much slower
-    FEncoding:= cEncUTF8;
-  end
-  else
-  if FEncodingDetect then
-  begin
-    //detect encoding by signature and by buffer content
-    if FEncodingDetectDefaultUtf8 then
-      FEncoding:= cEncUTF8
-    else
-      FEncoding:= cEncAnsi;
-    DoDetectStreamEncoding(Stream, FEncoding, NSignatureLen, bWithBom,
-      GlobalDetectUtf8BufferKb,
-      GlobalDetectUf16BufferWords);
-  end
-  else
-  begin
-    //detect encoding only by signature
-    DoDetectStreamEncoding(Stream, FEncoding, NSignatureLen, bWithBom,
-      0, //buffer sizes=0
-      0);
-  end;
-
-  case FEncoding of
-    cEncUTF8: SaveSignUtf8:= bWithBom;
-    cEncWideBE,
-    cEncWideLE: SaveSignWide:= bWithBom;
-  end;
-
-  CharSize:= cEncodingSize[FEncoding];
-
-  BufSize:= NStreamSize-NSignatureLen;
-  if BufSize<=0 then Exit;
-
-  GetMem(Buf, BufSize);
-  try
-    Stream.Position:= NSignatureLen;
-    Stream.ReadBuffer(Buf^, BufSize);
-
     NStart:= 0;
     NCounted:= 0;
     repeat
@@ -410,20 +426,15 @@ begin
         case FEncoding of
           cEncAnsi:
             begin
-              SA:= '';
-              SetLength(SA, Len);
-              Move(Buf[NStart], SA[1], Len);
-
+              SetString(SA, @Buf[NStart], Len);
               SUtf8:= EncConvertToUTF8(SA, FEncodingCodepage);
-
               LineAddRaw_NoUndo(SUtf8, LineEnd);
             end;
 
           cEncUTF8:
             begin
-              SA:= '';
-              SetLength(SA, Len);
-              Move(Buf[NStart], SA[1], Len);
+              //this now raises exception if UTF8 content is bad, it's needed
+              SetString(SA, @Buf[NStart], Len);
               LineAddRaw_NoUndo(SA, LineEnd);
             end;
 
@@ -458,6 +469,81 @@ begin
       if (NStart>=BufSize) then Break;
     until false;
 
+  end;
+  //------
+var
+  bWithBom: boolean;
+begin
+  AForcedToANSI:= false;
+  Clear;
+
+  bWithBom:= false;
+  NStreamSize:= Stream.Size;
+  NSignatureLen:= 0;
+
+  if NStreamSize>(cMaxFileSizeMbToDetectEncoding*1024*1024) then
+  begin
+    //it's safe to set here UTF8 even for binary files, later contents will be checked
+    FEncoding:= cEncUTF8;
+  end
+  else
+  if FEncodingDetect then
+  begin
+    //detect encoding by signature and by buffer content
+    if FEncodingDetectDefaultUtf8 then
+      FEncoding:= cEncUTF8
+    else
+      FEncoding:= cEncAnsi;
+    DetectStreamEncoding(Stream, FEncoding, FEncodingCodepage, NSignatureLen, bWithBom,
+      GlobalDetectUtf8BufferKb,
+      GlobalDetectUf16BufferWords);
+  end
+  else
+  begin
+    //detect encoding only by signature
+    DetectStreamEncoding(Stream, FEncoding, FEncodingCodepage, NSignatureLen, bWithBom,
+      0, //buffer sizes=0
+      0);
+  end;
+
+  case FEncoding of
+    cEncUTF8: SaveSignUtf8:= bWithBom;
+    cEncWideBE,
+    cEncWideLE: SaveSignWide:= bWithBom;
+  end;
+
+  CharSize:= cEncodingSize[FEncoding];
+
+  BufSize:= NStreamSize-NSignatureLen;
+  if BufSize<=0 then Exit;
+
+  GetMem(Buf, BufSize);
+  try
+    Stream.Position:= NSignatureLen;
+    Stream.ReadBuffer(Buf^, BufSize);
+
+    (*
+    //check that we won't break file contents, it may be cp1252 file, so UTF8 loading will break chars to '?'
+    //this is now not needed, utf8 load error raises exception in ATStringItem.SetLine, ie in _LoadItems
+    if FEncoding=cEncUTF8 then
+      if IsBufferUtf8(Buf, BufSize, false)=u8sNo then
+      begin
+        AForcedToANSI:= true;
+        FEncoding:= cEncAnsi;
+        CharSize:= 1;
+      end;
+      *)
+
+    try
+      _LoadItems;
+    except
+      //failed to load text as UTF8, so load again as ANSI
+      Clear; //clear loaded items
+      AForcedToANSI:= true;
+      FEncoding:= cEncAnsi;
+      CharSize:= 1;
+      _LoadItems;
+    end;
   finally
     FreeMem(Buf);
     FProgressValue:= 0;
@@ -468,7 +554,7 @@ end;
 procedure TATStrings.LoadFromStream(Stream: TStream);
 begin
   DoClearUndo(true);
-  DoLoadFromStream(Stream);
+  DoLoadFromStream(Stream, FLoadingForcedANSI);
   DoFinalizeLoading;
 end;
 

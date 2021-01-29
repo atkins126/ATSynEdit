@@ -5,12 +5,14 @@ unit formopt;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, StdCtrls,
+  Classes, SysUtils, Types,
+  Forms, Controls, Graphics, StdCtrls, Dialogs,
   ButtonPanel, Spin, ComCtrls, ExtCtrls,
+  FileUtil,
   ATStringProc,
   ATSynEdit,
   ATSynEdit_CanvasProc,
-  ATSynEdit_CharSizer, Types;
+  ATSynEdit_CharSizer;
 
 type
   { TfmOpt }
@@ -63,7 +65,6 @@ type
     chkScrollHint: TCheckBox;
     chkPageKeepRel: TCheckBox;
     chkNavHomeEnd: TCheckBox;
-    chkMsNiceScroll: TCheckBox;
     chkShowNum1st: TCheckBox;
     chkShowNumCr: TCheckBox;
     chkMapSelBorder: TCheckBox;
@@ -92,6 +93,7 @@ type
     chkUnprintSpace: TCheckBox;
     chkUnprintEn: TCheckBox;
     chkZebraActive: TCheckBox;
+    comboMsMidClick: TComboBox;
     ComboMsClick2: TComboBox;
     comboRulerStyle: TComboBox;
     edCrHeightNormal: TSpinEdit;
@@ -129,6 +131,7 @@ type
     LabChars: TLabel;
     Label1: TLabel;
     Label10: TLabel;
+    Label11: TLabel;
     Label12: TLabel;
     Label13: TLabel;
     Label14: TLabel;
@@ -325,7 +328,7 @@ begin
     chkMsClickNumSel.Checked:= ed.OptMouseClickNumberSelectsLine;
     chkMsDragDrop.Checked:= ed.OptMouseDragDrop;
     chkMsRtClickMove.Checked:= ed.OptMouseRightClickMovesCaret;
-    chkMsNiceScroll.Checked:= ed.OptMouseNiceScroll;
+    comboMsMidClick.ItemIndex:= Ord(ed.OptMouseMiddleClickAction);
     chkMsHideCursor.Checked:= ed.OptMouseHideCursorOnType;
 
     //undo
@@ -457,7 +460,7 @@ begin
       ed.OptMouseClickNumberSelectsLine:= chkMsClickNumSel.Checked;
       ed.OptMouseDragDrop:= chkMsDragDrop.Checked;
       ed.OptMouseRightClickMovesCaret:= chkMsRtClickMove.Checked;
-      ed.OptMouseNiceScroll:= chkMsNiceScroll.Checked;
+      ed.OptMouseMiddleClickAction:= TATMiddleClickAction(comboMsMidClick.ItemIndex);
       ed.OptMouseHideCursorOnType:= chkMsHideCursor.Checked;
 
       //undo

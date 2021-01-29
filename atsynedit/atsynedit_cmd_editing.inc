@@ -47,6 +47,7 @@ begin
 
   try
     bNeedGroup:= (Carets.Count>1) or (Carets.IsSelection);
+
     if bNeedGroup then
       Strings.BeginUndoGroup;
 
@@ -91,7 +92,8 @@ begin
       Strings.EndUndoGroup;
   end;
 
-  Result:= [cResultText, cResultCaretBottom];
+  //changed for issue CudaText#3065
+  Result:= [cResultText, cResultCaretBottom, cResultCaretLazy];
 end;
 
 function TATSynEdit.DoCommand_TextInsertTabSpacesAtCarets(AOvrMode: boolean): TATCommandResults;
@@ -105,6 +107,7 @@ begin
   if ModeReadOnly then Exit;
 
   Strings.BeginUndoGroup;
+
   try
     DoSelectionDeleteOrReset;
 
@@ -201,7 +204,8 @@ begin
 
   if bNeedGroup then Strings.EndUndoGroup;
 
-  Result:= [cResultText, cResultCaretTop];
+  //changed for issue CudaText#3065
+  Result:= [cResultText, cResultCaretTop, cResultCaretLazy];
 end;
 
 function TATSynEdit.DoCommand_TextDelete: TATCommandResults;
@@ -209,6 +213,7 @@ var
   bColBlock: boolean;
 begin
   bColBlock:= not IsSelRectEmpty;
+
   if bColBlock then
     if FSelRect.Left=FSelRect.Right then
     begin
@@ -354,7 +359,9 @@ begin
   if ModeOneLine then Exit;
 
   bNeedGroup:= Carets.Count>1;
-  if bNeedGroup then Strings.BeginUndoGroup;
+
+  if bNeedGroup then
+    Strings.BeginUndoGroup;
 
   DoSelectionDeleteOrReset;
 
@@ -395,7 +402,8 @@ begin
     Caret.SavedX:= 0;
   end;
 
-  if bNeedGroup then Strings.EndUndoGroup;
+  if bNeedGroup then
+    Strings.EndUndoGroup;
 
   Result:= [cResultText, cResultCaretBottom];
 end;
@@ -440,31 +448,39 @@ end;
 
 function TATSynEdit.DoCommand_TextDuplicateLine: TATCommandResults;
 var
+  St: TATStrings;
   Caret: TATCaretItem;
-  Y1, Y2, i: integer;
+  Line1, Line2, iCaret, iLine: integer;
 begin
   Result:= [];
   if ModeReadOnly then Exit;
 
-  //cmd handles only 1 caret, to handle seltext
-  Caret:= Carets[0];
-  if not Strings.IsIndexValid(Caret.PosY) then Exit;
+  DoCaretsDeleteOnSameLines;
 
-  Strings.BeginUndoGroup;
+  St:= Strings;
+  St.BeginUndoGroup;
   try
-    //universal code, for selection or not
-    Caret.GetSelLines(Y1, Y2, true);
-    Strings.LinesEnds[Y2]:= Strings.Endings;
-    for i:= Y2 downto Y1 do
+    for iCaret:= Carets.Count-1 downto 0 do
     begin
-      Strings.LineInsert(Y2+1, Strings.Lines[i]);
-      Strings.LinesEnds[Y2+1]:= Strings.Endings;
+      Caret:= Carets[iCaret];
+      if not St.IsIndexValid(Caret.PosY) then Continue;
+
+      //universal code, for selection or not
+      Caret.GetSelLines(Line1, Line2, true);
+      if St.LinesEnds[Line2]=cEndNone then
+        St.LinesEnds[Line2]:= St.Endings;
+      for iLine:= Line2 downto Line1 do
+      begin
+        St.LineInsert(Line2+1, St.Lines[iLine]);
+        St.LinesEnds[Line2+1]:= St.Endings;
+      end;
+
+      DoCaretsShift(iCaret+1, Caret.PosX, Caret.PosY, 0, (Line2-Line1+1), Point(0, 0));
     end;
   finally
-    Strings.EndUndoGroup;
+    St.EndUndoGroup;
   end;
 
-  DoCaretSingleAsIs;
   Result:= [cResultText, cResultCaretTop];
 end;
 
@@ -529,7 +545,8 @@ begin
   if ModeReadOnly then Exit;
 
   bNeedGroup:= Carets.Count>1;
-  if bNeedGroup then Strings.BeginUndoGroup;
+  if bNeedGroup then
+    Strings.BeginUndoGroup;
 
   for i:= FCarets.Count-1 downto 0 do
   begin
@@ -587,13 +604,75 @@ begin
     end;
   end;
 
-  if bNeedGroup then Strings.EndUndoGroup;
+  if bNeedGroup then
+    Strings.EndUndoGroup;
 
   if ANext then
     Result:= [cResultText, cResultCaretBottom]
   else
     Result:= [cResultText, cResultCaretTop];
 end;
+
+function TATSynEdit.DoCommand_TextDeleteWordEntire: TATCommandResults;
+var
+  Caret: TATCaretItem;
+  Str: atString;
+  Shift, PosAfter: TPoint;
+  bNeedGroup: boolean;
+  NLen, N1, N2, i: integer;
+begin
+  Result:= [];
+  if ModeReadOnly then Exit;
+
+  bNeedGroup:= Carets.Count>1;
+  if bNeedGroup then
+    Strings.BeginUndoGroup;
+
+  for i:= FCarets.Count-1 downto 0 do
+  begin
+    Caret:= FCarets[i];
+    if not Strings.IsIndexValid(Caret.PosY) then Continue;
+    Str:= Strings.Lines[Caret.PosY];
+    NLen:= Length(Str);
+
+    N1:= Caret.PosX;
+    N2:= N1;
+
+    //command is supposed to delete word-chars, so avoid using SFindWordOffset()
+    if N1<0 then
+      Continue;
+    if N1>=NLen then
+    begin
+      Caret.PosX:= NLen;
+      Continue;
+    end;
+    if not IsCharWord(Str[N1+1]) then
+      Continue;
+
+    while (N1>0) and IsCharWord(Str[N1]) do
+      Dec(N1);
+    while (N2<NLen) and IsCharWord(Str[N2+1]) do
+      Inc(N2);
+
+    if N1=N2 then Continue;
+    System.Delete(Str, N1+1, N2-N1);
+    Strings.Lines[Caret.PosY]:= Str;
+
+    Shift.X:= N1-N2;
+    Shift.Y:= 0;
+    PosAfter.X:= N1;
+    PosAfter.Y:= Caret.PosY;
+    Caret.PosX:= N1;
+
+    DoCaretsShift(i, Caret.PosX, Caret.PosY, Shift.X, Shift.Y, PosAfter);
+  end;
+
+  if bNeedGroup then
+    Strings.EndUndoGroup;
+
+  Result:= [cResultText, cResultCaretBottom];
+end;
+
 
 function TATSynEdit.DoCommand_TextIndentUnindent(ARight: boolean): TATCommandResults;
 begin
@@ -610,13 +689,23 @@ end;
 
 function TATSynEdit.DoCommand_TextIndentUnindent_StreamBlock(ARight: boolean): TATCommandResults;
 var
+  i: integer;
+begin
+  DoCaretsDeleteOnSameLines;
+
+  for i:= Carets.Count-1 downto 0 do
+    DoCommand_TextIndentUnindent_StreamBlock_OneCaret(ARight, Carets[i]);
+
+  Result:= [cResultText, cResultCaretAny];
+end;
+
+procedure TATSynEdit.DoCommand_TextIndentUnindent_StreamBlock_OneCaret(ARight: boolean; Caret: TATCaretItem);
+var
   NDecSpaces, NMinSpaces, i: integer;
   Str: atString;
-  Caret: TATCaretItem;
   NShiftInit, NShift1, NShift2, NShiftChars, NIndent1, NIndent2: integer;
   NBlockBeginX, NBlockBeginY, NBlockEndX, NBlockEndY: integer;
 begin
-  Caret:= Carets[0];
   Caret.GetSelLines(NBlockBeginY, NBlockEndY, true{Allow no sel});
   if NBlockBeginY<0 then exit;
   if Caret.EndY<0 then
@@ -706,8 +795,6 @@ begin
     if NBlockEndX>0 then
       Caret.EndX:= Max(0, NBlockEndX+NShift2);
   end;
-
-  Result:= [cResultText, cResultCaretAny];
 end;
 
 
@@ -752,7 +839,7 @@ begin
   if ModeReadOnly then Exit;
 
   Strings.Undo(FOptUndoGrouped);
-  Result:= [cResultText, cResultCaretBottom];
+  Result:= [cResultText, cResultCaretAny, cResultUndoRedo];
 end;
 
 function TATSynEdit.DoCommand_Redo: TATCommandResults;
@@ -762,7 +849,7 @@ begin
 
   Strings.SetGroupMark;
   Strings.Redo(FOptUndoGrouped);
-  Result:= [cResultText, cResultCaretBottom];
+  Result:= [cResultText, cResultCaretAny, cResultUndoRedo];
 end;
 
 
@@ -780,7 +867,7 @@ begin
   DoSelect_None;
   Caret:= FCarets[0];
 
-  Block:= TATStrings.Create;
+  Block:= TATStrings.Create(FOptUndoLimit);
   try
     Block.LoadFromString(AText);
     Block.ActionDeleteFakeLine;
@@ -823,12 +910,50 @@ begin
   Result:= [cResultText, cResultCaretBottom];
 end;
 
-
-function TATSynEdit.DoCommand_TextDeleteToFileEnd: TATCommandResults;
+function TATSynEdit.DoCommand_TextDeleteToDocumentBegin: TATCommandResults;
 var
   Caret: TATCaretItem;
   Str: atString;
-  i: integer;
+  Shift, PosAfter: TPoint;
+begin
+  Result:= [];
+  if ModeReadOnly then Exit;
+
+  DoCaretSingleAsIs;
+  Caret:= FCarets[0];
+
+  Strings.ChangeBlockActive:= true;
+  Strings.DoOnChangeBlock(
+    0, 0,
+    Caret.PosX, Caret.PosY,
+    cBlockDeleteLines,
+    nil
+    );
+
+  if Caret.PosX>0 then
+  begin
+    Str:= Strings.Lines[Caret.PosY];
+    Delete(Str, 1, Caret.PosX);
+    Strings.Lines[Caret.PosY]:= Str;
+  end;
+
+  //do it with fast method, not "for loop"
+  if Caret.PosY>0 then
+    Strings.TextDeleteRange(0, 0, 0, Caret.PosY, Shift, PosAfter);
+
+  Strings.ChangeBlockActive:= false;
+
+  //move caret to beginning
+  DoCaretSingle(0, 0);
+
+  Result:= [cResultText, cResultCaretBottom];
+end;
+
+
+function TATSynEdit.DoCommand_TextDeleteToDocumentEnd: TATCommandResults;
+var
+  Caret: TATCaretItem;
+  Shift, PosAfter: TPoint;
 begin
   Result:= [];
   if ModeReadOnly then Exit;
@@ -844,15 +969,7 @@ begin
     nil
     );
 
-  Str:= Strings.Lines[Caret.PosY];
-  if Caret.PosX<Length(Str) then
-  begin
-    Delete(Str, Caret.PosX+1, MaxInt);
-    Strings.Lines[Caret.PosY]:= Str;
-  end;
-
-  for i:= Strings.Count-1 downto Caret.PosY+1 do
-    Strings.LineDelete(i);
+  Strings.TextDeleteRange(Caret.PosX, Caret.PosY, 0, Strings.Count, Shift, PosAfter);
 
   if Caret.PosY>=Strings.Count-1 then
     Strings.LinesEnds[Caret.PosY]:= cEndNone;

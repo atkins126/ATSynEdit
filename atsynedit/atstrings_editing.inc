@@ -44,7 +44,7 @@ begin
   if bOneLine then
   begin
     TextReplace_OneLine(AFromY, AFromX, AToX, AText);
-    AShift.X:= 0;
+    AShift.X:= Length(AText)-(AToX-AFromX);
     AShift.Y:= 0;
     APosAfter.X:= AFromX+Length(AText);
     APosAfter.Y:= AFromY;
@@ -144,7 +144,7 @@ begin
   //----------------------
   //Insert multi-line text
 
-  Block:= TATStrings.Create;
+  Block:= TATStrings.Create(FUndoLimit);
   try
     FChangeBlockActive:= true;
     BeginUndoGroup;
@@ -604,7 +604,7 @@ begin
   begin
     BeginUndoGroup;
 
-    if (AX<Length(Str)) then
+    if AX<Length(Str) then
     begin
       StrMove:= Copy(Str, AX+1, MaxInt);
       Delete(Str, AX+1, MaxInt);
@@ -614,7 +614,8 @@ begin
     //handle situation when we at non-eol line, this must give
     //inserted line also w/o eol
     NewEnd:= LinesEnds[AY];
-    LinesEnds[AY]:= Endings; //force eol to cur line
+    if NewEnd=cEndNone then
+      LinesEnds[AY]:= Endings; //force eol to cur line
     LineInsertRaw(AY+1, AStrIndent+StrMove, NewEnd);
 
     EndUndoGroup;

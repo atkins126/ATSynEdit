@@ -125,16 +125,19 @@ var
   Caret: TATCaretItem;
   bTextChanged: boolean;
   bNeedRepaint, bAllowRepaint: boolean;
+  bUndoRedo: boolean;
+  bAllowCaretScroll: boolean;
 begin
   bNeedRepaint:= false;
   bAllowRepaint:= true;
   bTextChanged:= cResultText in Res;
+  bUndoRedo:= cResultUndoRedo in Res;
 
   //if one-line, try to make right edge of text near the edge of control, like Win inputs
   if ModeOneLine then
     if bTextChanged then
     begin
-      FScrollHorz.NPos:= 0;
+      FScrollHorz.SetZero;
       Include(Res, cResultCaretTop);
     end;
 
@@ -169,17 +172,28 @@ begin
 
   if IsCommandResults_CaretMove(Res) then
   begin
-    if cResultCaretTop in Res then
-      DoGotoCaret(cEdgeTop, false, false)
+    if Carets.Count=1 then
+      bAllowCaretScroll:= true
     else
-    if cResultCaretBottom in Res then
-      DoGotoCaret(cEdgeBottom, false, false)
+    if cResultCaretLazy in Res then
+      bAllowCaretScroll:= not IsCaretOnVisibleRect
     else
-    if cResultCaretLeft in Res then
-      DoGotoCaret(cEdgeLeft, false, false)
-    else
-    if cResultCaretRight in Res then
-      DoGotoCaret(cEdgeRight, false, false);
+      bAllowCaretScroll:= true;
+
+    if bAllowCaretScroll then
+    begin
+      if cResultCaretTop in Res then
+        DoGotoCaret(cEdgeTop, bUndoRedo, false, false)
+      else
+      if cResultCaretBottom in Res then
+        DoGotoCaret(cEdgeBottom, bUndoRedo, false, false)
+      else
+      if cResultCaretLeft in Res then
+        DoGotoCaret(cEdgeLeft, bUndoRedo, false, false)
+      else
+      if cResultCaretRight in Res then
+        DoGotoCaret(cEdgeRight, bUndoRedo, false, false);
+    end;
 
     if not (cResultKeepColumnSel in Res) then
       FSelRect:= cRectEmpty;
@@ -235,6 +249,7 @@ var
   Caret: TATCaretItem;
   Res: TATCommandResults;
   Str: string;
+  bAllowUndo: boolean;
   i: integer;
 begin
   if ACmd<=0 then Exit;
@@ -274,6 +289,10 @@ begin
 
   Carets.UpdateSavedX(cUpdateX_Prepare, false);
   FIsRunningCommand:= true;
+
+  bAllowUndo:= Carets.Count<=FOptUndoMaxCarets;
+  if not bAllowUndo then
+    SetEnabledSlowEvents(false);
 
   //--------
   case ACmd of
@@ -399,9 +418,11 @@ begin
     cCommand_TextDuplicateLine:        Res:= DoCommand_TextDuplicateLine;
     cCommand_TextDeleteToLineBegin:    Res:= DoCommand_TextDeleteToLineBegin;
     cCommand_TextDeleteToLineEnd:      Res:= DoCommand_TextDeleteToLineEnd;
-    cCommand_TextDeleteToTextEnd:      Res:= DoCommand_TextDeleteToFileEnd;
+    cCommand_TextDeleteToTextBegin:    Res:= DoCommand_TextDeleteToDocumentBegin;
+    cCommand_TextDeleteToTextEnd:      Res:= DoCommand_TextDeleteToDocumentEnd;
     cCommand_TextDeleteWordPrev:       Res:= DoCommand_TextDeleteWord(false);
     cCommand_TextDeleteWordNext:       Res:= DoCommand_TextDeleteWord(true);
+    cCommand_TextDeleteWordEntire:     Res:= DoCommand_TextDeleteWordEntire;
 
     cCommand_SelectAll:                Res:= DoCommand_SelectAll;
     cCommand_SelectNone:               Res:= [cResultCaretAny];
@@ -540,6 +561,9 @@ begin
     cCommand_ZoomReset:                Res:= DoCommand_ScaleReset;
     cCommand_RepeatTextCommand:        DoCommand(FLastTextCmd, FLastTextCmdText);
   end;
+
+  if not bAllowUndo then
+    SetEnabledSlowEvents(true);
 
   if IsCommandResults_CaretMove(Res) then
     if not FLastCommandMakesColumnSel then

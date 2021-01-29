@@ -72,6 +72,20 @@ begin
   SmoothPage:= 1;
 end;
 
+procedure TATSynScrollInfo.SetZero;
+begin
+  NPos:= 0;
+  NPixelOffset:= 0;
+  SmoothPos:= 0;
+end;
+
+procedure TATSynScrollInfo.SetLast;
+begin
+  NPos:= NPosLast;
+  NPixelOffset:= 0;
+  SmoothPos:= SmoothPosLast;
+end;
+
 function TATSynScrollInfo.TopGapVisible: boolean;
 begin
   Result:= NPos=-1;
@@ -167,7 +181,7 @@ begin
   Add(cMouseActionClickAndSelVerticalBlock, [ssLeft, ssAlt, ssShift]);
   Add(cMouseActionMakeCaret, [ssLeft, ssXControl]);
   Add(cMouseActionMakeCaretsColumn, [ssLeft, ssXControl, ssShift]);
-  Add(cMouseActionNiceScrolling, [ssMiddle]);
+  Add(cMouseActionClickMiddle, [ssMiddle]);
 
   Add(cMouseActionClickSimple, [ssLeft, ssAlt]);
   Add(cMouseActionClickSimple, [ssLeft, ssAltGr]);

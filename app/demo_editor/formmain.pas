@@ -235,7 +235,7 @@ type
     procedure DoSetEnc(const Str: string);
     procedure EditChanged(Sender: TObject);
     procedure EditCaretMoved(Sender: TObject);
-    procedure EditDrawLine(Sender: TObject; C: TCanvas; AX, AY: integer;
+    procedure EditDrawLine(Sender: TObject; C: TCanvas; ALineIndex, AX, AY: integer;
       const AStr: atString; ACharSize: TPoint; const AExtent: TATIntArray);
     procedure EditCalcLine(Sender: TObject; var AParts: TATLineParts;
       ALineIndex, ACharIndex, ALineLen: integer; var AColorAfterEol: TColor);
@@ -641,9 +641,9 @@ begin
   end;
 
   //test Bookmarks2
-  ed.BookmarkSetForLine_2(4, cBookmarkBgKind, '', false, false, 0);
-  ed.BookmarkSetForLine_2(5, cBookmarkBgKind, '', false, false, 0);
-  ed.BookmarkSetForLine_2(6, cBookmarkBgKind, '', false, false, 0);
+  ed.BookmarkSetForLine_2(4, cBookmarkBgKind, '', bmadDontDelete, false, 0);
+  ed.BookmarkSetForLine_2(5, cBookmarkBgKind, '', bmadDontDelete, false, 0);
+  ed.BookmarkSetForLine_2(6, cBookmarkBgKind, '', bmadDontDelete, false, 0);
 
   Progress.Hide;
   UpdateCaption;
@@ -893,6 +893,8 @@ begin
     btnStop.Show;
     progress.Show;
     progress.Position:= 0;
+
+    ed.Markers.Clear; //support "find first" in selection
 
     case res of
       mrOk: //find
@@ -1396,8 +1398,9 @@ begin
   ed.Update;
 end;
 
-procedure TfmMain.EditDrawLine(Sender: TObject; C: TCanvas;
-  AX, AY: integer; const AStr: atString; ACharSize: TPoint; const AExtent: TATIntArray);
+procedure TfmMain.EditDrawLine(Sender: TObject; C: TCanvas; ALineIndex, AX,
+  AY: integer; const AStr: atString; ACharSize: TPoint;
+  const AExtent: TATIntArray);
 var
   X1, X2, Y, i: integer;
 begin

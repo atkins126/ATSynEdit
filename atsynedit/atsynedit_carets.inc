@@ -102,7 +102,7 @@ var
   P: TPoint;
   NStart, i: integer;
   Caret: TATCaretItem;
-  Marker: TATMarkerItem;
+  Marker: PATMarkerItem;
 begin
   if AOnlyLast then
     NStart:= Carets.Count-1
@@ -130,21 +130,27 @@ begin
   if Assigned(FMarkers) then
   for i:= 0 to FMarkers.Count-1 do
   begin
-    Marker:= FMarkers[i];
-    P.X:= Marker.PosX;
-    P.Y:= Marker.PosY;
-    if IsPosFolded(P.X, P.Y) then
-    begin
-      Marker.CoordX:= -1;
-      Marker.CoordY:= -1;
-    end
-    else
+    Marker:= FMarkers.ItemPtr(i);
+    Marker^.CoordX:= -1;
+    Marker^.CoordY:= -1;
+    Marker^.CoordX2:= -1;
+    Marker^.CoordY2:= -1;
+    P.X:= Marker^.PosX;
+    P.Y:= Marker^.PosY;
+    if not IsPosFolded(P.X, P.Y) then
     begin
       P:= CaretPosToClientPos(P);
-      Marker.CoordX:= P.X;
-      Marker.CoordY:= P.Y;
+      Marker^.CoordX:= P.X;
+      Marker^.CoordY:= P.Y;
+      if Marker^.LineLen<>0 then
+      begin
+        P.X:= Marker^.PosX+Marker^.LineLen;
+        P.Y:= Marker^.PosY;
+        P:= CaretPosToClientPos(P);
+        Marker^.CoordX2:= P.X;
+        Marker^.CoordY2:= P.Y;
+      end;
     end;
-    FMarkers[i]:= Marker;
   end;
 end;
 
@@ -172,6 +178,7 @@ var
 begin
   Result.X:= -1;
   Result.Y:= -1;
+  if not AStrings.IsIndexValid(P.Y) then Exit;
 
   AWrapInfo.FindIndexesOfLineNumber(P.Y, NIndex1, NIndex2);
   if NIndex1<0 then Exit;
@@ -343,6 +350,8 @@ begin
         Item:= AWrapInfo[NIndex];
         Result.Y:= Item.NLineIndex;
         Result.X:= Item.NCharIndex+Item.NLength-1;
+        if not AStrings.IsIndexValid(Result.Y) then
+          exit(Point(-1, -1));
       end;
       Exit
     end;
@@ -351,6 +360,8 @@ begin
   //click in text
     Item:= AWrapInfo[NIndex];
     Result.Y:= Item.NLineIndex;
+    if not AStrings.IsIndexValid(Result.Y) then
+      exit(Point(-1, -1));
 
     Str:= AStrings.LineSub(
       Result.Y,
@@ -458,8 +469,7 @@ begin
     Dec(NIndex);
     if NIndex<0 then
     begin
-      FScrollVert.NPos:= 0;
-      FScrollVert.NPixelOffset:= 0;
+      FScrollVert.SetZero;
       Exit;
     end;
 
@@ -495,12 +505,21 @@ begin
   end;
 end;
 
-function TATSynEdit.DoShowPos(const APos: TPoint; AIndentHorz, AIndentVert: integer; AllowUpdate: boolean): boolean;
+function TATSynEdit.DoShowPos(const APos: TPoint; AIndentHorz, AIndentVert: integer; AUnfold, AllowUpdate: boolean): boolean;
 var
   Coord: TPoint;
   NIndex, NChars: integer;
 begin
   Result:= false;
+
+  //allow big values - make centering vertically
+  if Abs(AIndentVert)>=cMaxIndentVert then
+    AIndentVert:= GetVisibleLines div 2;
+
+  if AUnfold then
+    if IsLineFolded(APos.Y, true) then
+      DoUnfoldLine(APos.Y);
+
   Coord:= CaretPosToClientPos(APos);
 
   //for y
@@ -558,7 +577,7 @@ var
 begin
   if not Strings.IsIndexValid(APos.Y) then exit;
 
-  //if IsPosFolded(ACaretPos.X, ACaretPos.Y) -better?
+  //if IsPosFolded(APos.X, APos.Y) - better?
   if IsLineFolded(APos.Y, true) then
   begin
     if ADoUnfold then
@@ -580,10 +599,10 @@ begin
   end;
 
   if APosEnd.Y>=0 then
-    changed1:= DoShowPos(APosEnd, AIndentHorz, AIndentVert, false)
+    changed1:= DoShowPos(APosEnd, AIndentHorz, AIndentVert, ADoUnfold, false)
   else
     changed1:= false;
-  changed2:= DoShowPos(APos, AIndentHorz, AIndentVert, false);
+  changed2:= DoShowPos(APos, AIndentHorz, AIndentVert, ADoUnfold, false);
 
   ////always update scrollbar after all keyboard cmds (PageUp, PageDown, Ctrl+Home)
   if not changed1 and not changed2 then
@@ -593,14 +612,27 @@ begin
     Update;
 end;
 
-procedure TATSynEdit.DoGotoCaret(AEdge: TATCaretEdge;
+procedure TATSynEdit.DoGotoCaret(AEdge: TATCaretEdge; AUndoRedo: boolean=false;
   AAllowProcessMsg: boolean=true; AAllowUpdate: boolean=true);
+var
+  NIndentVert, NIndentHorz: integer;
 begin
+  if AUndoRedo then
+  begin
+    NIndentVert:= FOptUndoIndentVert;
+    NIndentHorz:= FOptUndoIndentHorz;
+  end
+  else
+  begin
+    NIndentVert:= FOptScrollIndentCaretVert;
+    NIndentHorz:= FOptScrollIndentCaretHorz;
+  end;
+
   DoGotoPos(
     Carets.CaretAtEdge(AEdge),
     Point(-1, -1),
-    FOptScrollIndentCaretHorz,
-    FOptScrollIndentCaretVert,
+    NIndentHorz,
+    NIndentVert,
     false,
     false, //dont unfold
     AAllowProcessMsg,
@@ -715,10 +747,24 @@ begin
     Result:= FCarets.AsArray;
 end;
 
+function TATSynEdit.GetMarkersArray: TATInt64Array;
+begin
+  SetLength(Result, 0);
+  if Assigned(FMarkers) then
+    Result:= FMarkers.AsArray;
+end;
+
 procedure TATSynEdit.SetCaretsArray(const Ar: TATPointArray);
 begin
   if Assigned(FCarets) then
     FCarets.AsArray:= Ar;
+end;
+
+procedure TATSynEdit.SetMarkersArray(const Ar: TATInt64Array);
+begin
+  InitMarkers; //FMarkers can be nil
+  if Assigned(FMarkers) then
+    FMarkers.AsArray:= Ar;
 end;
 
 procedure TATSynEdit.DoCaretsExtend(ADown: boolean; ALines: integer);
@@ -1053,6 +1099,15 @@ begin
     R.Top:= R.Bottom + H * Props.Height div 100;
 end;
 
+
+function TATSynEdit.IsCaretOnVisibleRect: boolean;
+begin
+  //must refresh carets' CoordX/CoordY first, otherwise 1st carets' move out of
+  //visible rect will not be detected
+  UpdateCaretsCoords;
+
+  Result:= Carets.IsAnyCaretInVisibleRect(FRectMain);
+end;
 
 { TATCaretProps }
 

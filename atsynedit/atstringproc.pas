@@ -32,6 +32,7 @@ type
 type
   TATIntArray = array of integer;
   TATPointArray = array of TPoint;
+  TATInt64Array = array of Int64;
   TATLineOffsetsInfo = array of integer; //word is too small
   TATSimpleRange = record NFrom, NTo: integer; end;
   TATSimpleRangeArray = array of TATSimpleRange;
@@ -185,8 +186,10 @@ procedure SDeleteFromEol(var S: string);
 procedure SDeleteFromEol(var S: UnicodeString);
 
 procedure SClipboardCopy(AText: string; AClipboardObj: TClipboard=nil);
+function SFindCharCount(const S: string; ch: char): integer;
 function SFindCharCount(const S: UnicodeString; ch: WideChar): integer;
 function SFindRegexMatch(const Subject, Regex: UnicodeString; out MatchPos, MatchLen: integer): boolean;
+function SFindRegexMatch(const Subject, Regex: UnicodeString; GroupIndex: integer; ModS, ModI, ModM: boolean): UnicodeString;
 function SCountTextOccurrences(const SubStr, Str: UnicodeString): integer;
 function SCountTextLines(const Str, StrBreak: UnicodeString): integer;
 procedure SSplitByChar(const S: string; Sep: char; out S1, S2: string);
@@ -1197,6 +1200,16 @@ begin
 end;
 
 
+function SFindCharCount(const S: string; ch: char): integer;
+var
+  i: integer;
+begin
+  Result:= 0;
+  for i:= 1 to Length(S) do
+    if S[i]=ch then
+      Inc(Result);
+end;
+
 function SFindCharCount(const S: UnicodeString; ch: WideChar): integer;
 var
   i: integer;
@@ -1243,6 +1256,24 @@ begin
       MatchPos:= Obj.MatchPos[0];
       MatchLen:= Obj.MatchLen[0];
     end;
+  finally
+    FreeAndNil(Obj);
+  end;
+end;
+
+function SFindRegexMatch(const Subject, Regex: UnicodeString; GroupIndex: integer; ModS, ModI, ModM: boolean): UnicodeString;
+var
+  Obj: TRegExpr;
+begin
+  Result:= '';
+  Obj:= TRegExpr.Create;
+  try
+    Obj.ModifierS:= ModS;
+    Obj.ModifierM:= ModM;
+    Obj.ModifierI:= ModI;
+    Obj.Expression:= Regex;
+    if Obj.Exec(Subject) then
+      Result:= Obj.Match[GroupIndex];
   finally
     FreeAndNil(Obj);
   end;

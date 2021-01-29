@@ -438,7 +438,6 @@ type
 
     // emit back-reference to group
     function EmitGroupRef(AIndex: integer; AIgnoreCase: boolean): PRegExprChar;
-      {$IFDEF InlineFuncs}inline;{$ENDIF}
 
     {$IFDEF FastUnicodeData}
     procedure FindCategoryName(var scan: PRegExprChar; var ch1, ch2: REChar);
@@ -785,7 +784,7 @@ uses
 const
   // TRegExpr.VersionMajor/Minor return values of these constants:
   REVersionMajor = 1;
-  REVersionMinor = 147;
+  REVersionMinor = 149;
 
   OpKind_End = REChar(1);
   OpKind_MetaClass = REChar(2);
@@ -3426,7 +3425,7 @@ begin
   else
     begin
       Result := APtr^;
-      if IsWordChar(Result) then
+      if (Result <> '_') and IsWordChar(Result) then
       begin
         fLastErrorSymbol := Result;
         Error(reeUnknownMetaSymbol);
@@ -3546,8 +3545,8 @@ begin
   case (regParse - 1)^ of
     '^':
      begin
-      if not fCompModifiers.M or
-        ({$IFDEF UseLineSep} (fLineSeparators = '') and {$ENDIF} not fUsePairedBreak) then
+      if not fCompModifiers.M
+        {$IFDEF UseLineSep} or (fLineSeparators = '') {$ENDIF} then
         ret := EmitNode(OP_BOL)
       else
         ret := EmitNode(OP_BOLML);
@@ -3555,8 +3554,8 @@ begin
 
     '$':
      begin
-      if not fCompModifiers.M or
-        ({$IFDEF UseLineSep} (fLineSeparators = '') and {$ENDIF} not fUsePairedBreak) then
+      if not fCompModifiers.M
+        {$IFDEF UseLineSep} or (fLineSeparators = '') {$ENDIF} then
         ret := EmitNode(OP_EOL)
       else
         ret := EmitNode(OP_EOLML);
@@ -5677,7 +5676,7 @@ var
     APtr := p;
   end;
 
-  procedure FindSubstGroupIndex(var p: PRegExprChar; var Idx: integer); {$IFDEF InlineFuncs}inline;{$ENDIF}
+  procedure FindSubstGroupIndex(var p: PRegExprChar; var Idx: integer);
   begin
     Idx := ParseVarName(p);
     if (Idx >= 0) and (Idx <= High(GrpIndexes)) then
