@@ -1,9 +1,3 @@
-{$define use_bg} // Use BGRABitmap to render minimap
-
-{.$define debug_show_fps}
-
-{$define atsynedit_cache}
-
 {.$define debug_findwrapindex}
 
 {$define fix_horzscroll} //workaround for gtk2 widgetset unstable: it freezes app
@@ -11,3 +5,6 @@
                          //ok also for win32
 
 {.$define debug_scroll}
+
+{$define map_th} //render minimap in thread
+

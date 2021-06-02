@@ -31,7 +31,7 @@ var
   bDown: boolean;
   YMax, i: integer;
   Pnt: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
 begin
   if AY<0 then exit;
   bDown:= ALineDelta>0;
@@ -75,7 +75,7 @@ begin
   end;
 end;
 
-function TATSynEdit.DoCommand_SelectColumnToDirection(ADir: TATSelectColumnDirection): TATCommandResults;
+function TATSynEdit.DoCommand_SelectColumnToDirection(ADir: TATEditorSelectColumnDirection): TATCommandResults;
 var
   N, NPageLines: integer;
   bDown: boolean;
@@ -83,6 +83,9 @@ begin
   Result:= [];
   if Carets.Count=0 then Exit;
   FLastCommandMakesColumnSel:= true;
+
+  //it's needed to Undo to multi-carets, not one caret
+  Strings.SetGroupMark;
 
   if IsSelRectEmpty and (FSelRectEnd.Y<0) then
     if not DoSelect_MultiCaretsLookLikeColumnSelection then
@@ -213,6 +216,7 @@ begin
   end;
 
   try
+    St.BeginUndoGroup;
     St.EnabledBookmarksUpdate:= false;
     NLastLine:= St.Count-1;
 
@@ -222,9 +226,12 @@ begin
       if NTo>=NLastLine then Exit;
       bLastNoEol:= (NTo+1=NLastLine) and (St.LinesEnds[NLastLine]=cEndNone);
 
+      {
       S:= St.Lines[NTo+1];
       St.LineDelete(NTo+1);
       St.LineInsert(NFrom, S);
+      }
+      St.LineMove(NTo+1, NFrom);
 
       if bLastNoEol then
         St.ActionDeleteFakeLineAndFinalEol;
@@ -250,9 +257,12 @@ begin
       if bLastNoEol then
         St.LinesEnds[NTo]:= St.Endings;
 
+      {
       S:= St.Lines[NFrom-1];
       St.LineDelete(NFrom-1);
       St.LineInsert(NTo, S);
+      }
+      St.LineMove(NFrom-1, NTo);
 
       if bLastNoEol then
         St.ActionDeleteFakeLineAndFinalEol;
@@ -263,6 +273,7 @@ begin
     end;
 
   finally
+    St.EndUndoGroup;
     St.EnabledBookmarksUpdate:= true;
   end;
 

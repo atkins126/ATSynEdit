@@ -13,6 +13,9 @@ type
 
   TfmCombo = class(TForm)
     ButtonPanel1: TButtonPanel;
+    chkRO: TCheckBox;
+    chkNumAllowNeg: TCheckBox;
+    chkNumOnly: TCheckBox;
     chkEnMouse: TCheckBox;
     chkEnabled: TCheckBox;
     Label1: TLabel;
@@ -23,6 +26,9 @@ type
     edMaxLen: TSpinEdit;
     procedure chkEnabledChange(Sender: TObject);
     procedure chkEnMouseChange(Sender: TObject);
+    procedure chkNumAllowNegChange(Sender: TObject);
+    procedure chkNumOnlyChange(Sender: TObject);
+    procedure chkROChange(Sender: TObject);
     procedure edMaxLenChange(Sender: TObject);
     procedure FormCreate(Sender: TObject);
   private
@@ -77,6 +83,24 @@ procedure TfmCombo.chkEnMouseChange(Sender: TObject);
 begin
   ed.OptMouseEnableAll:= chkEnMouse.Checked;
   ed0.OptMouseEnableAll:= chkEnMouse.Checked;
+end;
+
+procedure TfmCombo.chkNumAllowNegChange(Sender: TObject);
+begin
+  ed.OptInputNumberAllowNegative:= chkNumAllowNeg.Checked;
+  ed0.OptInputNumberAllowNegative:= chkNumAllowNeg.Checked;
+end;
+
+procedure TfmCombo.chkNumOnlyChange(Sender: TObject);
+begin
+  ed.OptInputNumberOnly:= chkNumOnly.Checked;
+  ed0.OptInputNumberOnly:= chkNumOnly.Checked;
+end;
+
+procedure TfmCombo.chkROChange(Sender: TObject);
+begin
+  ed.ModeReadOnly:= chkRO.Checked;
+  ed0.ModeReadOnly:= chkRO.Checked;
 end;
 
 procedure TfmCombo.edMaxLenChange(Sender: TObject);

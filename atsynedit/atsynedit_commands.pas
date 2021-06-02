@@ -139,8 +139,8 @@ const
   cCommand_SelectSplitToLines = 265 or cCmdFlag_Caret;
   cCommand_SelectExtendByLine = 266 or cCmdFlag_Caret;
 
-  cCommand_MoveSelectionUp = 268 or cCmdFlag_Caret;
-  cCommand_MoveSelectionDown = 269 or cCmdFlag_Caret;
+  cCommand_MoveSelectionUp = 268; // or cCmdFlag_Caret;
+  cCommand_MoveSelectionDown = 269; // or cCmdFlag_Caret;
   cCommand_TextInsertEmptyAbove = 270 or cCmdFlag_ResetSel or cCmdFlag_Caret;
   cCommand_TextInsertEmptyBelow = 271 or cCmdFlag_ResetSel or cCmdFlag_Caret;
 
@@ -175,6 +175,8 @@ const
   cCommand_ReverseLines = 350;
   cCommand_ShuffleLines = 351;
 
+  //first Paste command
+  cCommand_ClipboardPaste_Begin = 1000;
   cCommand_ClipboardPaste = 1000;
   cCommand_ClipboardPaste_Select = 1001;
   cCommand_ClipboardPaste_KeepCaret = 1002;
@@ -192,6 +194,8 @@ const
   cCommand_ClipboardAltPaste_ColumnKeepCaret = 1014 or cCmdFlag_ResetSel;
   //use SecondarySelection (has meaning in Linux)
   cCommand_ClipboardAltAltPaste = 1015;
+  //last Paste command
+  cCommand_ClipboardPaste_End = 1015;
 
   cCommand_TextCaseLower = 1020;
   cCommand_TextCaseUpper = 1021;
@@ -242,7 +246,39 @@ var
   //must be set in application
   cCommand_GotoDefinition: integer = 0;
 
+//all sequental Undo-items which have CommandCode with this value,
+//will be undone in single step
+function IsCommandToUndoInOneStep(AValue: integer): boolean;
+
+function IsCommandForDelayedParsing(AValue: integer): boolean;
+
 implementation
+
+function IsCommandToUndoInOneStep(AValue: integer): boolean;
+begin
+  case AValue and not cCmdFlag_ResetSel of
+    cCommand_MoveSelectionUp,
+    cCommand_MoveSelectionDown,
+    cCommand_ClipboardPaste_Begin..
+    cCommand_ClipboardPaste_End:
+      Result:= true;
+    else
+      Result:= false;
+  end;
+end;
+
+function IsCommandForDelayedParsing(AValue: integer): boolean;
+//to solve CudaText issue #3403:
+//holding hotkey for 'move lines up/down' breaks syntax highlight
+begin
+  case AValue of
+    cCommand_MoveSelectionUp,
+    cCommand_MoveSelectionDown:
+      Result:= true;
+    else
+      Result:= false;
+  end;
+end;
 
 end.
 

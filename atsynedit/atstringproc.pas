@@ -33,7 +33,18 @@ type
   TATIntArray = array of integer;
   TATPointArray = array of TPoint;
   TATInt64Array = array of Int64;
-  TATLineOffsetsInfo = array of integer; //word is too small
+
+const
+  //must be >= OptMaxLineLenForAccurateCharWidths
+  cMaxFixedArray = 1024;
+
+type
+  TATIntFixedArray = record
+    Data: packed array[0..cMaxFixedArray-1] of integer; //'word' is too small for CalcCharOffsets
+    Len: integer;
+  end;
+
+type
   TATSimpleRange = record NFrom, NTo: integer; end;
   TATSimpleRangeArray = array of TATSimpleRange;
 
@@ -47,6 +58,8 @@ function SCaseTitle(const S, SNonWordChars: atString): atString;
 function SCaseInvert(const S: atString): atString;
 function SCaseSentence(const S, SNonWordChars: atString): atString;
 
+function StringOfCharW(ch: WideChar; Len: integer): UnicodeString;
+
 {$Z1}
 type
   TATLineEnds = (cEndNone, cEndWin, cEndUnix, cEndMac);
@@ -59,7 +72,7 @@ type
     );
 
 const
-  cLineEndStrings: array[TATLineEnds] of string = ('', #13#10, #10, #13);
+  cLineEndStrings: array[TATLineEnds] of UnicodeString = ('', #13#10, #10, #13);
   cLineEndNiceNames: array[TATLineEnds] of string = ('', 'CRLF', 'LF', 'CR');
   cLineEndLength: array[TATLineEnds] of integer = (0, 2, 1, 1);
 
@@ -90,6 +103,9 @@ type
 
   TATStringTabHelper = class
   private
+    //these arrays are local vars, placed here to alloc 2*4Kb not in stack
+    ListEnds: TATIntFixedArray;
+    ListMid: TATIntFixedArray;
   public
     TabSpaces: boolean;
     TabSize: integer;
@@ -105,11 +121,12 @@ type
     function CharPosToColumnPos(ALineIndex: integer; const S: atString; APos: integer): integer;
     function ColumnPosToCharPos(ALineIndex: integer; const S: atString; AColumn: integer): integer;
     function IndentUnindent(ALineIndex: integer; const Str: atString; ARight: boolean): atString;
-    procedure CalcCharOffsets(ALineIndex: integer; const S: atString; out AInfo: TATLineOffsetsInfo; ACharsSkipped: integer = 0);
+    procedure CalcCharOffsets(ALineIndex: integer; const S: atString; var AInfo: TATIntFixedArray; ACharsSkipped: integer = 0);
     function CalcCharOffsetLast(ALineIndex: integer; const S: atString; ACharsSkipped: integer = 0): integer;
     function FindWordWrapOffset(ALineIndex: integer; const S: atString; AColumns: integer;
       const ANonWordChars: atString; AWrapIndented: boolean): integer;
     function FindClickedPosition(ALineIndex: integer; const Str: atString;
+      constref ListOffsets: TATIntFixedArray;
       APixelsFromLeft, ACharSize: integer;
       AAllowVirtualPos: boolean;
       out AEndOfLinePos: boolean): integer;
@@ -239,6 +256,8 @@ end;
 
 function IsCharWordInIdentifier(ch: widechar): boolean;
 begin
+  if Ord(ch)>Ord('z') then
+    exit(false);
   case ch of
     '0'..'9',
     'a'..'z',
@@ -356,14 +375,14 @@ begin
 end;
 }
 
-procedure DoDebugOffsets(const AList: TATLineOffsetsInfo);
+procedure DoDebugOffsets(const Info: TATIntFixedArray);
 var
   i: integer;
   s: string;
 begin
   s:= '';
-  for i:= Low(AList) to High(AList) do
-    s:= s+IntToStr(AList[i])+'% ';
+  for i:= 0 to Info.Len-1 do
+    s:= s+IntToStr(Info.Data[i])+'% ';
   ShowMessage('Offsets'#10+s);
 end;
 
@@ -382,7 +401,7 @@ function TATStringTabHelper.FindWordWrapOffset(ALineIndex: integer; const S: atS
   //
 var
   N, NMin, NAvg: integer;
-  Offsets: TATLineOffsetsInfo;
+  Offsets: TATIntFixedArray;
 begin
   if S='' then
     Exit(0);
@@ -391,12 +410,12 @@ begin
 
   CalcCharOffsets(ALineIndex, S, Offsets);
 
-  if Offsets[High(Offsets)]<=AColumns*100 then
+  if Offsets.Data[Offsets.Len-1]<=AColumns*100 then
     Exit(Length(S));
 
   //NAvg is average wrap offset, we use it if no correct offset found
-  N:= Length(S)-1;
-  while (N>0) and (Offsets[N]>(AColumns+1)*100) do Dec(N);
+  N:= Min(Length(S), cMaxFixedArray)-1;
+  while (N>0) and (Offsets.Data[N]>(AColumns+1)*100) do Dec(N);
   NAvg:= N;
   if NAvg<OptMinWordWrapOffset then
     Exit(OptMinWordWrapOffset);
@@ -531,7 +550,7 @@ begin
     else
     begin
       Result[N]:= ' ';
-      Insert(StringOfChar(' ', NSize-1), Result, N);
+      Insert(StringOfCharW(' ', NSize-1), Result, N);
     end;
   until false;
 end;
@@ -553,7 +572,7 @@ end;
 
 
 procedure TATStringTabHelper.CalcCharOffsets(ALineIndex: integer; const S: atString;
-  out AInfo: TATLineOffsetsInfo; ACharsSkipped: integer);
+  var AInfo: TATIntFixedArray; ACharsSkipped: integer);
 var
   NLen, NSize, NTabSize, NCharsSkipped: integer;
   NScalePercents: integer;
@@ -562,8 +581,9 @@ var
   ch: widechar;
   i: integer;
 begin
-  NLen:= Length(S);
-  SetLength(AInfo, NLen);
+  FillChar(AInfo, SizeOf(AInfo), 0);
+  NLen:= Min(Length(S), cMaxFixedArray);
+  AInfo.Len:= NLen;
   if NLen=0 then Exit;
 
   NCharsSkipped:= ACharsSkipped;
@@ -573,7 +593,7 @@ begin
   if NLen>OptMaxLineLenForAccurateCharWidths then
   begin
     for i:= 0 to NLen-1 do
-      AInfo[i]:= 100*(i+1);
+      AInfo.Data[i]:= 100*(i+1);
     exit;
   end;
 
@@ -618,9 +638,9 @@ begin
     end;
 
     if i=1 then
-      AInfo[i-1]:= NSize*NScalePercents
+      AInfo.Data[i-1]:= NSize*NScalePercents
     else
-      AInfo[i-1]:= AInfo[i-2]+NSize*NScalePercents;
+      AInfo.Data[i-1]:= AInfo.Data[i-2]+NSize*NScalePercents;
   end;
 end;
 
@@ -629,7 +649,7 @@ function TATStringTabHelper.CalcCharOffsetLast(ALineIndex: integer; const S: atS
 var
   NLen, NSize, NTabSize, NCharsSkipped: integer;
   NScalePercents: integer;
-  ch: widechar;
+  ch: WideChar;
   i: integer;
 begin
   Result:= 0;
@@ -669,11 +689,10 @@ begin
 end;
 
 
-function TATStringTabHelper.FindClickedPosition(ALineIndex: integer; const Str: atString; APixelsFromLeft,
-  ACharSize: integer; AAllowVirtualPos: boolean; out AEndOfLinePos: boolean): integer;
+function TATStringTabHelper.FindClickedPosition(ALineIndex: integer; const Str: atString;
+  constref ListOffsets: TATIntFixedArray;
+  APixelsFromLeft, ACharSize: integer; AAllowVirtualPos: boolean; out AEndOfLinePos: boolean): integer;
 var
-  ListOffsets: TATLineOffsetsInfo;
-  ListEnds, ListMid: TATIntArray;
   i: integer;
 begin
   AEndOfLinePos:= false;
@@ -686,23 +705,22 @@ begin
     Exit;
   end;
 
-  SetLength(ListEnds, Length(Str));
-  SetLength(ListMid, Length(Str));
-  CalcCharOffsets(ALineIndex, Str, ListOffsets);
+  ListEnds.Len:= ListOffsets.Len;
+  ListMid.Len:= ListOffsets.Len;
 
   //positions of each char end
-  for i:= 0 to High(ListEnds) do
-    ListEnds[i]:= ListOffsets[i]*ACharSize div 100;
+  for i:= 0 to ListOffsets.Len-1 do
+    ListEnds.Data[i]:= ListOffsets.Data[i]*ACharSize div 100;
 
   //positions of each char middle
-  for i:= 0 to High(ListEnds) do
+  for i:= 0 to ListOffsets.Len-1 do
     if i=0 then
-      ListMid[i]:= ListEnds[i] div 2
+      ListMid.Data[i]:= ListEnds.Data[i] div 2
     else
-      ListMid[i]:= (ListEnds[i-1]+ListEnds[i]) div 2;
+      ListMid.Data[i]:= (ListEnds.Data[i-1]+ListEnds.Data[i]) div 2;
 
-  for i:= 0 to High(ListEnds) do
-    if APixelsFromLeft<ListMid[i] then
+  for i:= 0 to ListOffsets.Len-1 do
+    if APixelsFromLeft<ListMid.Data[i] then
     begin
       Result:= i+1;
 
@@ -715,7 +733,7 @@ begin
 
   AEndOfLinePos:= true;
   if AAllowVirtualPos then
-    Result:= Length(Str)+1 + (APixelsFromLeft - ListEnds[High(ListEnds)]) div ACharSize
+    Result:= Length(Str)+1 + (APixelsFromLeft - ListEnds.Data[ListEnds.Len-1]) div ACharSize
   else
     Result:= Length(Str)+1;
 end;
@@ -723,7 +741,7 @@ end;
 procedure TATStringTabHelper.FindOutputSkipOffset(ALineIndex: integer; const S: atString;
   AScrollPos: integer; out ACharsSkipped: integer; out ACellPercentsSkipped: integer);
 var
-  Offsets: TATLineOffsetsInfo;
+  Offsets: TATIntFixedArray;
 begin
   ACharsSkipped:= 0;
   ACellPercentsSkipped:= 0;
@@ -731,12 +749,12 @@ begin
 
   CalcCharOffsets(ALineIndex, S, Offsets);
 
-  while (ACharsSkipped<Length(S)) and
-    (Offsets[ACharsSkipped] < AScrollPos*100) do
+  while (ACharsSkipped<Offsets.Len) and
+    (Offsets.Data[ACharsSkipped] < AScrollPos*100) do
     Inc(ACharsSkipped);
 
   if (ACharsSkipped>0) then
-    ACellPercentsSkipped:= Offsets[ACharsSkipped-1];
+    ACellPercentsSkipped:= Offsets.Data[ACharsSkipped-1];
 end;
 
 function SGetItem(var S: string; const ch: Char = ','): string;
@@ -780,7 +798,7 @@ end;
 
 function TATStringTabHelper.SpacesToTabs(ALineIndex: integer; const S: atString): atString;
 begin
-  Result:= StringReplace(S, StringOfChar(' ', TabSize), #9, [rfReplaceAll]);
+  Result:= StringReplace(S, StringOfCharW(' ', TabSize), WideChar(9), [rfReplaceAll]);
 end;
 
 function TATStringTabHelper.CharPosToColumnPos(ALineIndex: integer; const S: atString;
@@ -866,7 +884,7 @@ begin
   if IndentSize=0 then
   begin
     if TabSpaces then
-      StrIndent:= StringOfChar(' ', TabSize)
+      StrIndent:= StringOfCharW(' ', TabSize)
     else
       StrIndent:= #9;
     DecSpaces:= TabSize;
@@ -875,13 +893,13 @@ begin
   if IndentSize>0 then
   begin
     //use spaces
-    StrIndent:= StringOfChar(' ', IndentSize);
+    StrIndent:= StringOfCharW(' ', IndentSize);
     DecSpaces:= IndentSize;
   end
   else
   begin
     //indent<0 - use tabs
-    StrIndent:= StringOfChar(#9, Abs(IndentSize));
+    StrIndent:= StringOfCharW(#9, Abs(IndentSize));
     DecSpaces:= Abs(IndentSize)*TabSize;
   end;
 
@@ -1073,6 +1091,15 @@ begin
       if (ch = '.') or (ch = '!') or (ch = '?') then
         dot:= True;
   end;
+end;
+
+function StringOfCharW(ch: WideChar; Len: integer): UnicodeString;
+var
+  i: integer;
+begin
+  SetLength(Result, Len);
+  for i:= 1 to Len do
+    Result[i]:= ch;
 end;
 
 

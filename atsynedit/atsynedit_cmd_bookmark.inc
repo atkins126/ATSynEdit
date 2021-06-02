@@ -7,15 +7,16 @@ var
   Data: TATBookmarkData;
 begin
   if not Strings.IsIndexValid(ALine) then exit;
+
+  FillChar(Data, SizeOf(Data), 0);
   Data.LineNum:= ALine;
   Data.Kind:= ABmKind;
-  Data.Hint:= AHint;
+  Data.Hint:= StrNew(PChar(AHint));
   Data.AutoDelete:= AAutoDelete;
   Data.ShowInBookmarkList:= AShowInList;
   Data.Tag:= ATag;
   ABookmarksObj.Add(Data);
 
-  InvalidateHilitingCache(ALine);
   Update;
 end;
 
@@ -64,16 +65,16 @@ begin
     Strings.Bookmarks.Delete(NIndex)
   else
   begin
+    FillChar(Data, SizeOf(Data), 0);
     Data.LineNum:= ALine;
     Data.Kind:= ABmKind;
-    Data.Hint:= AHint;
+    Data.Hint:= StrNew(PChar(AHint));
     Data.AutoDelete:= AAutoDelete;
     Data.ShowInBookmarkList:= AShowInList;
     Data.Tag:= ATag;
     Strings.Bookmarks.Add(Data);
   end;
 
-  InvalidateHilitingCache(ALine);
   Update;
 end;
 
@@ -83,7 +84,6 @@ begin
   if not Strings.IsIndexValid(ALine) then exit;
   ABookmarksObj.DeleteForLine(ALine);
 
-  InvalidateHilitingCache(ALine);
   Update;
 end;
 
@@ -103,7 +103,6 @@ begin
   Result:= ABookmarksObj.DeleteByTag(ATag);
   if Result then
   begin
-    InvalidateHilitingCache;
     Update;
   end;
 end;
@@ -141,7 +140,6 @@ begin
     end;
   end;
 
-  InvalidateHilitingCache;
   Update;
 end;
 
@@ -149,7 +147,6 @@ procedure TATSynEdit.BookmarkDeleteAll;
 begin
   Strings.Bookmarks.Clear;
 
-  InvalidateHilitingCache;
   Update;
 end;
 
@@ -157,7 +154,6 @@ procedure TATSynEdit.BookmarkDeleteAll_2;
 begin
   Strings.Bookmarks2.Clear;
 
-  InvalidateHilitingCache;
   Update;
 end;
 
@@ -180,7 +176,7 @@ begin
 
     nItem:= Strings.Bookmarks.Find(nLine);
     if (nItem>=0) and
-      (not AOnlyShownInList or Strings.Bookmarks[nItem].Data.ShowInBookmarkList) then
+      (not AOnlyShownInList or Strings.Bookmarks[nItem]^.Data.ShowInBookmarkList) then
     begin
       DoGotoPos(
         Point(0, nLine),
@@ -205,7 +201,7 @@ begin
   try
     for i:= 0 to Strings.Bookmarks.Count-1 do
     begin
-      NLine:= Strings.Bookmarks[i].Data.LineNum;
+      NLine:= Strings.Bookmarks[i]^.Data.LineNum;
       if Strings.IsIndexValid(NLine) then
         List.Add(UTF8Encode(Strings.Lines[NLine]));
     end;
@@ -225,7 +221,7 @@ begin
 
   for i:= NCount-1 downto 0 do
   begin
-    NLine:= Strings.Bookmarks[i].Data.LineNum;
+    NLine:= Strings.Bookmarks[i]^.Data.LineNum;
     Strings.LineDelete(NLine);
   end;
 
@@ -252,7 +248,7 @@ begin
   Carets.Clear;
   for i:= 0 to Strings.Bookmarks.Count-1 do
   begin
-    NLine:= Strings.Bookmarks[i].Data.LineNum;
+    NLine:= Strings.Bookmarks[i]^.Data.LineNum;
     Carets.Add(0, NLine);
   end;
 

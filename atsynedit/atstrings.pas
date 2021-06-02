@@ -12,7 +12,7 @@ interface
 
 uses
   {$ifdef windows} Windows, {$endif}
-  SysUtils, Classes, Graphics,
+  SysUtils, Classes, Graphics, Forms,
   ATStringProc,
   ATStringProc_UTF8Detect,
   ATStringProc_UTF8Decode,
@@ -21,6 +21,7 @@ uses
   ATSynEdit_Gaps,
   ATSynEdit_Bookmarks,
   ATSynEdit_Gutter_Decor,
+  ATSynEdit_Commands,
   EncConv;
 
 const
@@ -43,6 +44,12 @@ type
   TATIntegerList = specialize TFPGList<integer>;
 
 type
+  TATLineIndentKind = (
+    cLineIndentOther,
+    cLineIndentSpaces,
+    cLineIndentTabs
+    );
+
   TATLineSeparator = (
     cLineSepNone,
     cLineSepTop,
@@ -125,6 +132,7 @@ type
     property LineState: TATLineState read GetLineState;
     property LineEnds: TATLineEnds read GetLineEnds;
     function LineSub(AFrom, ALen: integer): UnicodeString;
+    procedure LineToBuffer(OtherBuf: PWideChar);
     function CharAt(AIndex: integer): WideChar;
     function HasTab: boolean;
     function HasAsciiNoTabs: boolean;
@@ -134,7 +142,7 @@ type
     procedure LineStateToSaved; inline;
     procedure LineStateToNone; inline;
     function IsFake: boolean; inline;
-    function IndentSize: integer;
+    procedure GetIndentProp(out ACharCount: integer; out AKind: TATLineIndentKind);
     function CharLenWithoutSpace: integer;
     function IsBlank: boolean;
   end;
@@ -162,10 +170,12 @@ type
   TATStringsGetMarkers = function: TATInt64Array of object;
   TATStringsSetCarets = procedure(const ACarets: TATPointArray) of object;
   TATStringsSetMarkers = procedure(const AMarkers: TATInt64Array) of object;
-  TATStringsLogEvent = procedure(Sender: TObject; ALine: integer) of object;
-  TATStringsChangeEvent = procedure(Sender: TObject; AChange: TATLineChangeKind; ALine, AItemCount: integer) of object;
+  TATStringsChangeLogEvent = procedure(Sender: TObject; ALine: integer) of object;
+  TATStringsChangeExEvent = procedure(Sender: TObject; AChange: TATLineChangeKind; ALine, AItemCount: integer) of object;
   TATStringsChangeBlockEvent = procedure(Sender: TObject; const AStartPos, AEndPos: TPoint; 
                                  AChange: TATBlockChangeKind; ABlock: TStringList) of object;
+  TATStringsUndoEvent = procedure(Sender: TObject; AX, AY: integer) of object;
+
 type
   { TATStrings }
 
@@ -181,6 +191,7 @@ type
     FGutterDecor2: TATGutterDecor;
     FUndoList,
     FRedoList: TATUndoList;
+    FCommandCode: integer;
     FUndoLimit: integer;
     FEndings: TATLineEnds;
     FEncoding: TATFileEncoding;
@@ -203,10 +214,11 @@ type
     FOnSetCaretsArray: TATStringsSetCarets;
     FOnSetMarkersArray: TATStringsSetMarkers;
     FOnProgress: TNotifyEvent;
-    FOnLog: TATStringsLogEvent;
-    FOnChange: TATStringsChangeEvent;
+    FOnChangeLog: TATStringsChangeLogEvent;
+    FOnChangeEx: TATStringsChangeExEvent;
+    FOnUndoBefore: TATStringsUndoEvent;
+    FOnUndoAfter: TATStringsUndoEvent;
     FOnChangeBlock: TATStringsChangeBlockEvent;
-    FSavedCaretsArray: TATPointArray;
     FChangeBlockActive: boolean;
       //to use with OnChangeBlock:
       //indicates that program can ignore separate line changes in OnChange,
@@ -215,17 +227,18 @@ type
     FEnabledBookmarksUpdate: boolean;
     FEnabledChangeEvents: boolean;
     FLoadingForcedANSI: boolean;
+    FLastUndoY: integer;
 
     function Compare_Asc(Key1, Key2: Pointer): Integer;
     function Compare_AscNoCase(Key1, Key2: Pointer): Integer;
     function Compare_Desc(Key1, Key2: Pointer): Integer;
     function Compare_DescNoCase(Key1, Key2: Pointer): Integer;
-    procedure DoAddUndo(AAction: TATEditAction; AIndex: integer;
-      const AText: atString; AEnd: TATLineEnds; ALineState: TATLineState);
+    procedure AddUndoItem(AAction: TATEditAction; AIndex: integer;
+      const AText: atString; AEnd: TATLineEnds; ALineState: TATLineState;
+      ACommandCode: integer);
     function DebugText: string;
     function DoCheckFilled: boolean;
     procedure DoFinalizeSaving;
-    procedure DoUndoRedo(AUndo: boolean; AGrouped: boolean);
     function GetCaretsArray: TATPointArray;
     function GetMarkersArray: TATInt64Array;
     function GetLine(AIndex: integer): atString;
@@ -267,18 +280,23 @@ type
     procedure DoLoadFromStream(Stream: TStream; out AForcedToANSI: boolean);
     procedure DoDetectEndings;
     procedure DoFinalizeLoading;
-    procedure DoClearLineStates(ASaved: boolean);
+    procedure ClearLineStates(ASaved: boolean);
     procedure SetModified(AValue: boolean);
     procedure SetRedoAsString(const AValue: string);
     procedure SetUndoAsString(const AValue: string);
     procedure SetUndoLimit(AValue: integer);
-    procedure DoUndoSingle(ACurList: TATUndoList; out ASoftMarked, AHardMarked,
-      AHardMarkedNext, AUnmodifiedNext: boolean);
-    procedure DoAddUpdate(N: integer; AAction: TATEditAction);
+    procedure UndoSingle(ACurList: TATUndoList; out ASoftMarked, AHardMarked,
+      AHardMarkedNext, AUnmodifiedNext: boolean;
+      out ACommandCode: integer;
+      out ATickCount: QWord);
+    procedure AddUpdatesAction(N: integer; AAction: TATEditAction);
   public
+    CaretsAfterLastEdition: TATPointArray;
+    EditingActive: boolean;
+    EditingTopLine: integer;
     constructor Create(AUndoLimit: integer); virtual;
     destructor Destroy; override;
-    procedure Clear;
+    procedure Clear(AWithEvent: boolean=true);
     procedure ClearSeparators;
     function Count: integer;
     function IsIndexValid(N: integer): boolean; inline;
@@ -286,12 +304,13 @@ type
     function IsPosFolded(AX, AY, AIndexClient: integer): boolean;
     procedure LineAddRaw_NoUndo(const S: string; AEnd: TATLineEnds);
     procedure LineAddRaw_NoUndo(const S: UnicodeString; AEnd: TATLineEnds);
-    procedure LineAddRaw(const AString: atString; AEnd: TATLineEnds);
+    procedure LineAddRaw(const AString: atString; AEnd: TATLineEnds; AWithEvent: boolean=true);
     procedure LineAdd(const AString: atString);
     procedure LineInsert(ALineIndex: integer; const AString: atString; AWithEvent: boolean=true);
     procedure LineInsertStrings(ALineIndex: integer; ABlock: TATStrings; AWithFinalEol: boolean);
     procedure LineDelete(ALineIndex: integer; AForceLast: boolean= true;
       AWithEvent: boolean=true; AWithUndo: boolean=true);
+    procedure LineMove(AIndexFrom, AIndexTo: integer; AWithUndo: boolean=true);
     property Lines[Index: integer]: atString read GetLine write SetLine;
     property LinesAscii[Index: integer]: boolean read GetLineAscii;
     property LinesLen[Index: integer]: integer read GetLineLen;
@@ -307,7 +326,7 @@ type
     property LinesSeparator[Index: integer]: TATLineSeparator read GetLineSep write SetLineSep;
     function LineSub(ALineIndex, APosFrom, ALen: integer): atString;
     function LineCharAt(ALineIndex, ACharIndex: integer): WideChar;
-    function LineIndent(ALineIndex: integer): integer;
+    procedure GetIndentProp(ALineIndex: integer; out ACharCount: integer; out AKind: TATLineIndentKind);
     function LineLenWithoutSpace(ALineIndex: integer): integer;
     procedure LineBlockDelete(ALine1, ALine2: integer);
     procedure LineBlockInsert(ALineFrom: integer; ANewLines: TStringList);
@@ -337,6 +356,7 @@ type
     property Bookmarks2: TATBookmarks read FBookmarks2;
     property GutterDecor1: TATGutterDecor read FGutterDecor1 write FGutterDecor1;
     property GutterDecor2: TATGutterDecor read FGutterDecor2 write FGutterDecor2;
+    property CommandCode: integer read FCommandCode write FCommandCode;
     //actions
     procedure ActionDeleteFakeLine;
     procedure ActionDeleteFakeLineAndFinalEol;
@@ -352,7 +372,7 @@ type
     procedure ActionSort(AAction: TATStringsSortAction; AFrom, ATo: integer);
     procedure ActionReverseLines;
     procedure ActionShuffleLines;
-    procedure ActionAddJumpToUndo;
+    procedure ActionAddJumpToUndo(constref ACaretsArray: TATPointArray);
     //file
     procedure LoadFromStream(Stream: TStream);
     procedure LoadFromFile(const AFilename: string);
@@ -383,18 +403,18 @@ type
     procedure TextReplaceRange(AFromX, AFromY, AToX, AToY: integer; const AText: atString; out AShift,
       APosAfter: TPoint; AWithUndoGroup: boolean);
     function TextReplaceLines_UTF8(ALineFrom, ALineTo: integer; ANewLines: TStringList): boolean;
-    function TextSubstring(AX1, AY1, AX2, AY2: integer; const AEolString: string = #10): atString;
-    function TextSubstringLength(AX1, AY1, AX2, AY2: integer; const AEolString: string=#10): integer;
+    function TextSubstring(AX1, AY1, AX2, AY2: integer; const AEolString: UnicodeString = #10): atString;
+    function TextSubstringLength(AX1, AY1, AX2, AY2: integer; const AEolString: UnicodeString=#10): integer;
     //undo
     property OnGetCaretsArray: TATStringsGetCarets read FOnGetCaretsArray write FOnGetCaretsArray;
     property OnGetMarkersArray: TATStringsGetMarkers read FOnGetMarkersArray write FOnGetMarkersArray;
     property OnSetCaretsArray: TATStringsSetCarets read FOnSetCaretsArray write FOnSetCaretsArray;
     property OnSetMarkersArray: TATStringsSetMarkers read FOnSetMarkersArray write FOnSetMarkersArray;
     procedure SetGroupMark;
+    procedure SetNewCommandMark;
     procedure BeginUndoGroup;
     procedure EndUndoGroup;
-    procedure Undo(AGrouped: boolean);
-    procedure Redo(AGrouped: boolean);
+    procedure UndoOrRedo(AUndo: boolean; AGrouped: boolean);
     property UndoLimit: integer read GetUndoLimit write SetUndoLimit;
     property UndoAfterSave: boolean read FUndoAfterSave write FUndoAfterSave;
     property UndoCount: integer read GetUndoCount;
@@ -403,22 +423,24 @@ type
     property RedoEmpty: boolean read GetRedoEmpty;
     property UndoAsString: string read GetUndoAsString write SetUndoAsString;
     property RedoAsString: string read GetRedoAsString write SetRedoAsString;
-    procedure DoClearUndo(ALocked: boolean = false);
-    procedure DoClearLineStatesUpdated;
+    procedure ClearUndo(ALocked: boolean = false);
+    procedure ClearLineStatesUpdated;
     procedure DoEventLog(ALine: integer);
     procedure DoEventChange(AChange: TATLineChangeKind; ALineIndex, AItemCount: integer);
     //misc
-    procedure DoSaveLastEditPos(AX: integer=-1; AY: integer=-1);
-    procedure DoGotoLastEditPos;
+    procedure ActionSaveLastEditionPos(AX: integer=-1; AY: integer=-1);
+    procedure ActionGotoLastEditionPos;
     procedure DoOnChangeBlock(AX1, AY1, AX2, AY2: integer;
       AChange: TATBlockChangeKind; ABlock: TStringList);
     function OffsetToPosition(AOffset: integer): TPoint;
     property LastCommandChangedLines: integer read FLastCommandChangedLines write FLastCommandChangedLines;
     //events
     property OnProgress: TNotifyEvent read FOnProgress write FOnProgress;
-    property OnLog: TATStringsLogEvent read FOnLog write FOnLog;
-    property OnChange: TATStringsChangeEvent read FOnChange write FOnChange;
+    property OnChangeLog: TATStringsChangeLogEvent read FOnChangeLog write FOnChangeLog;
+    property OnChangeEx: TATStringsChangeExEvent read FOnChangeEx write FOnChangeEx;
     property OnChangeBlock: TATStringsChangeBlockEvent read FOnChangeBlock write FOnChangeBlock;
+    property OnUndoBefore: TATStringsUndoEvent read FOnUndoBefore write FOnUndoBefore;
+    property OnUndoAfter: TATStringsUndoEvent read FOnUndoAfter write FOnUndoAfter;
   end;
 
 type
@@ -490,19 +512,41 @@ begin
     (LineEnds=cEndNone);
 end;
 
-function TATStringItem.IndentSize: integer;
+procedure TATStringItem.GetIndentProp(out ACharCount: integer; out
+  AKind: TATLineIndentKind);
 var
-  NLen: integer;
-  ch: WideChar;
+  NSpaces, NTabs: integer;
+  i: integer;
 begin
-  Result:= 0;
-  NLen:= CharLen;
-  repeat
-    if Result>=NLen then Break;
-    ch:= CharAt(Result+1);
-    if not IsCharSpace(ch) then Break;
-    Inc(Result);
-  until false;
+  ACharCount:= 0;
+  AKind:= cLineIndentOther;
+  NSpaces:= 0;
+  NTabs:= 0;
+
+  for i:= 1 to CharLen do
+  begin
+    case CharAt(i) of
+      ' ':
+        begin
+          Inc(ACharCount);
+          Inc(NSpaces);
+        end;
+      #9:
+        begin
+          Inc(ACharCount);
+          Inc(NTabs);
+        end
+      else
+        Break;
+    end;
+  end;
+
+  if ACharCount=0 then exit;
+  if (NSpaces>0) and (NTabs>0) then exit;
+  if NSpaces>0 then
+    AKind:= cLineIndentSpaces
+  else
+    AKind:= cLineIndentTabs;
 end;
 
 function TATStringItem.CharLenWithoutSpace: integer;
@@ -566,6 +610,30 @@ begin
     SetLength(Result, NLen);
     for i:= 1 to NLen do
       Result[i]:= WideChar(Ord(Buf[i]));
+  end;
+end;
+
+procedure TATStringItem.LineToBuffer(OtherBuf: PWideChar);
+//OtherBuf must point to WideChar array of enough size
+var
+  NLen, i: integer;
+  SrcBuf: PChar;
+begin
+  NLen:= Length(Buf);
+  if NLen=0 then exit;
+  if Ex.Wide then
+  begin
+    Move(Buf[1], OtherBuf^, NLen);
+  end
+  else
+  begin
+    SrcBuf:= PChar(Buf);
+    for i:= 1 to NLen do
+    begin
+      OtherBuf^:= WideChar(Ord(SrcBuf^));
+      Inc(SrcBuf);
+      Inc(OtherBuf);
+    end;
   end;
 end;
 
@@ -989,6 +1057,12 @@ begin
     Result:= 2000;
 end;
 
+procedure TATStrings.SetNewCommandMark;
+begin
+  if Assigned(FUndoList) then
+    FUndoList.NewCommandMark:= true;
+end;
+
 procedure TATStrings.SetEndings(AValue: TATLineEnds);
 var
   typ: TATLineEnds;
@@ -1013,7 +1087,7 @@ begin
   if FReadOnly then Exit;
   Item:= FList.GetItem(AIndex);
 
-  DoAddUndo(aeaChange, AIndex, Item^.Line, Item^.LineEnds, Item^.LineState);
+  AddUndoItem(aeaChange, AIndex, Item^.Line, Item^.LineEnds, Item^.LineState, FCommandCode);
   DoEventLog(AIndex);
   DoEventChange(cLineChangeEdited, AIndex, 1);
 
@@ -1050,7 +1124,7 @@ begin
 
   Item:= FList.GetItem(AIndex);
 
-  DoAddUndo(aeaChangeEol, AIndex, '', Item^.LineEnds, Item^.LineState);
+  AddUndoItem(aeaChangeEol, AIndex, '', Item^.LineEnds, Item^.LineState, FCommandCode);
 
   Item^.Ex.Ends:= TATBits2(AValue);
   Item^.LineStateToChanged;
@@ -1114,7 +1188,6 @@ var
   Item: PATStringItem;
   Ptr: pointer;
   bFinalEol: boolean;
-  SW: WideString;
 begin
   Result:= '';
   if Count=0 then Exit;
@@ -1149,10 +1222,7 @@ begin
       if (AMaxLen>0) and (Len>AMaxLen) then
         FillChar(Ptr^, Len*2, $20) //fill item with spaces
       else
-      begin
-        SW:= Item^.Line;
-        Move(SW[1], Ptr^, Len*2);
-      end;
+        Item^.LineToBuffer(Ptr);
       Inc(Ptr, Len*2);
     end;
     //copy eol
@@ -1196,28 +1266,28 @@ begin
   FOneLine:= false;
   FProgressValue:= 0;
   FProgressKind:= cStringsProgressNone;
-  SetLength(FSavedCaretsArray, 0);
+  SetLength(CaretsAfterLastEdition, 0);
 
   ActionAddFakeLineIfNeeded;
-  DoClearUndo;
+  ClearUndo;
 end;
 
 destructor TATStrings.Destroy;
 begin
   //disable events: so Clear won't call them
-  FOnChange:= nil;
+  FOnChangeEx:= nil;
+  FOnChangeLog:= nil;
   FOnChangeBlock:= nil;
   FOnGetCaretsArray:= nil;
   FOnSetCaretsArray:= nil;
   FOnGetMarkersArray:= nil;
   FOnSetMarkersArray:= nil;
   FOnProgress:= nil;
-  FOnLog:= nil;
 
   GutterDecor1:= nil;
   GutterDecor2:= nil;
 
-  DoClearUndo(true);
+  ClearUndo(true);
   FList.Clear; //Clear calls event, no need
 
   FreeAndNil(FList);
@@ -1262,7 +1332,7 @@ procedure TATStrings.ActionAddFakeLineIfNeeded;
 begin
   if Count=0 then
   begin
-    LineAddRaw('', cEndNone);
+    LineAddRaw('', cEndNone, false{AWithEvent});
     Exit
   end;
 
@@ -1270,21 +1340,24 @@ begin
 
   if LinesEnds[Count-1]<>cEndNone then
   begin
-    LineAddRaw('', cEndNone);
+    LineAddRaw('', cEndNone, false{AWithEvent});
     Exit
   end;
 end;
 
-procedure TATStrings.LineAddRaw(const AString: atString; AEnd: TATLineEnds);
+procedure TATStrings.LineAddRaw(const AString: atString; AEnd: TATLineEnds; AWithEvent: boolean);
 var
   Item: TATStringItem;
 begin
   if FReadOnly then Exit;
   if DoCheckFilled then Exit;
 
-  DoAddUndo(aeaInsert, Count, '', cEndNone, cLineStateNone);
-  DoEventLog(Count);
-  DoEventChange(cLineChangeAdded, Count, 1);
+  AddUndoItem(aeaInsert, Count, '', cEndNone, cLineStateNone, FCommandCode);
+  if AWithEvent then
+  begin
+    DoEventLog(Count);
+    DoEventChange(cLineChangeAdded, Count, 1);
+  end;
 
   Item.Init(AString, AEnd);
   FList.Add(@Item);
@@ -1337,7 +1410,7 @@ begin
   if FReadOnly then Exit;
   if DoCheckFilled then Exit;
 
-  DoAddUndo(aeaInsert, ALineIndex, '', cEndNone, cLineStateNone);
+  AddUndoItem(aeaInsert, ALineIndex, '', cEndNone, cLineStateNone, FCommandCode);
 
   if AWithEvent then
   begin
@@ -1387,7 +1460,7 @@ begin
   begin
     for i:= 0 to NCount-1 do
     begin
-      DoAddUndo(aeaInsert, ALineIndex+i, '', cEndNone, cLineStateNone);
+      AddUndoItem(aeaInsert, ALineIndex+i, '', cEndNone, cLineStateNone, FCommandCode);
 
       Item.Init(
         ABlock.GetLine(i),
@@ -1436,7 +1509,7 @@ begin
     Item:= FList.GetItem(ALineIndex);
 
     if AWithUndo then
-      DoAddUndo(aeaDelete, ALineIndex, Item^.Line, Item^.LineEnds, Item^.LineState);
+      AddUndoItem(aeaDelete, ALineIndex, Item^.Line, Item^.LineEnds, Item^.LineState, FCommandCode);
 
     if AWithEvent then
     begin
@@ -1453,6 +1526,35 @@ begin
     ActionAddFakeLineIfNeeded;
 end;
 
+procedure TATStrings.LineMove(AIndexFrom, AIndexTo: integer; AWithUndo: boolean=true);
+var
+  ItemFrom, ItemTo: PATStringItem;
+  NLineMin: integer;
+begin
+  if AWithUndo then
+  begin
+    ItemFrom:= GetItemPtr(AIndexFrom);
+    ItemTo:= GetItemPtr(AIndexTo);
+
+    AddUndoItem(aeaDelete, AIndexFrom, ItemFrom^.Line, ItemFrom^.LineEnds, ItemFrom^.LineState, FCommandCode);
+    AddUndoItem(aeaInsert, AIndexTo, ItemTo^.Line, ItemTo^.LineEnds, ItemTo^.LineState, FCommandCode);
+  end;
+
+  FList.Move(AIndexFrom, AIndexTo);
+
+  LinesState[AIndexFrom]:= cLineStateChanged;
+  if LinesEnds[AIndexFrom]=cEndNone then
+    LinesEnds[AIndexFrom]:= Endings;
+  if LinesEnds[AIndexTo]=cEndNone then
+    LinesEnds[AIndexTo]:= Endings;
+
+  ActionAddFakeLineIfNeeded;
+  Modified:= true;
+
+  NLineMin:= Min(AIndexFrom, AIndexTo);
+  DoEventLog(NLineMin);
+end;
+
 function TATStrings.LineSub(ALineIndex, APosFrom, ALen: integer): atString;
 var
   Item: PATStringItem;
@@ -1467,9 +1569,10 @@ begin
   Result:= GetItemPtr(ALineIndex)^.CharAt(ACharIndex);
 end;
 
-function TATStrings.LineIndent(ALineIndex: integer): integer;
+procedure TATStrings.GetIndentProp(ALineIndex: integer; out
+  ACharCount: integer; out AKind: TATLineIndentKind);
 begin
-  Result:= GetItemPtr(ALineIndex)^.IndentSize;
+  GetItemPtr(ALineIndex)^.GetIndentProp(ACharCount, AKind);
 end;
 
 function TATStrings.LineLenWithoutSpace(ALineIndex: integer): integer;
@@ -1504,16 +1607,20 @@ begin
   Result:= FList.GetItem(AIndex);
 end;
 
-procedure TATStrings.Clear;
+procedure TATStrings.Clear(AWithEvent: boolean);
 begin
-  DoClearUndo(FUndoList.Locked);
-  DoEventLog(-1);
-  DoEventChange(cLineChangeDeletedAll, -1, 1);
+  ClearUndo(FUndoList.Locked);
+
+  if AWithEvent then
+  begin
+    DoEventLog(0);
+    DoEventChange(cLineChangeDeletedAll, -1, 1);
+  end;
 
   FList.Clear;
 end;
 
-procedure TATStrings.DoClearLineStates(ASaved: boolean);
+procedure TATStrings.ClearLineStates(ASaved: boolean);
 var
   Item: PATStringItem;
   i: integer;
@@ -1562,7 +1669,7 @@ begin
 end;
 
 function TATStrings.TextSubstring(AX1, AY1, AX2, AY2: integer;
-  const AEolString: string = #10): atString;
+  const AEolString: UnicodeString = #10): atString;
 var
   i: integer;
 begin
@@ -1586,7 +1693,7 @@ begin
 end;
 
 function TATStrings.TextSubstringLength(AX1, AY1, AX2, AY2: integer;
-  const AEolString: string = #10): integer;
+  const AEolString: UnicodeString = #10): integer;
 var
   NLen, NLenEol, i: integer;
 begin
@@ -1654,19 +1761,24 @@ begin
     end;
 end;
 
-procedure TATStrings.DoUndoSingle(ACurList: TATUndoList;
-  out ASoftMarked, AHardMarked, AHardMarkedNext, AUnmodifiedNext: boolean);
+procedure TATStrings.UndoSingle(ACurList: TATUndoList;
+  out ASoftMarked, AHardMarked, AHardMarkedNext, AUnmodifiedNext: boolean;
+  out ACommandCode: integer; out ATickCount: QWord);
 var
-  Item: TATUndoItem;
-  AAction: TATEditAction;
-  AText: atString;
-  AIndex: integer;
-  AEnd: TATLineEnds;
-  ALineState: TATLineState;
-  ACarets: TATPointArray;
-  AMarkers: TATInt64Array;
-  NCount: integer;
+  CurItem, PrevItem: TATUndoItem;
+  CurAction: TATEditAction;
+  CurText: atString;
+  CurIndex: integer;
+  CurLineEnd: TATLineEnds;
+  CurLineState: TATLineState;
+  CurCaretsArray: TATPointArray;
+  CurMarkersArray: TATInt64Array;
   OtherList: TATUndoList;
+  NCount: integer;
+  NEventX, NEventY: integer;
+  bWithoutPause: boolean;
+  bEnableEventBefore,
+  bEnableEventAfter: boolean;
 begin
   ASoftMarked:= true;
   AHardMarked:= false;
@@ -1675,91 +1787,142 @@ begin
   if FReadOnly then Exit;
   if ACurList=nil then Exit;
 
-  Item:= ACurList.Last;
-  if Item=nil then Exit;
-  AAction:= Item.ItemAction;
-  AIndex:= Item.ItemIndex;
-  if not IsIndexValid(AIndex) then exit;
-  AText:= Item.ItemText;
-  AEnd:= Item.ItemEnd;
-  ALineState:= Item.ItemLineState;
-  ACarets:= Item.ItemCarets;
-  AMarkers:= Item.ItemMarkers;
-  ASoftMarked:= Item.ItemSoftMark;
-  AHardMarked:= Item.ItemHardMark;
-  NCount:= ACurList.Count;
+  CurItem:= ACurList.Last;
+  if CurItem=nil then Exit;
+  CurAction:= CurItem.ItemAction;
+  CurIndex:= CurItem.ItemIndex;
 
-  //detect that after reverting one item, list will have "unmodified mark" last item
-  //we need to skip all "jump" items, https://github.com/Alexey-T/CudaText/issues/2677
-  while (NCount>=2) and (ACurList[NCount-2].ItemAction=aeaCaretJump) do
-    Dec(NCount);
+  //CurIndex=Count is allowed, CudaText issue #3258
+  if (CurIndex<0) or (CurIndex>Count) then exit;
+
+  CurText:= CurItem.ItemText;
+  CurLineEnd:= CurItem.ItemEnd;
+  CurLineState:= CurItem.ItemLineState;
+  CurCaretsArray:= CurItem.ItemCarets;
+  CurMarkersArray:= CurItem.ItemMarkers;
+  ACommandCode:= CurItem.ItemCommandCode;
+  ASoftMarked:= CurItem.ItemSoftMark;
+  AHardMarked:= CurItem.ItemHardMark;
+  ATickCount:= CurItem.ItemTickCount;
+  NCount:= ACurList.Count;
+  bWithoutPause:= IsCommandToUndoInOneStep(ACommandCode);
+
+  //note: do not break this issue https://github.com/Alexey-T/CudaText/issues/2677
   if NCount>=2 then
-    with ACurList[NCount-2] do
-    begin
-      AHardMarkedNext:= ItemHardMark;
-      AUnmodifiedNext:= ItemAction=aeaClearModified;
-    end;
+  begin
+    PrevItem:= ACurList[NCount-2];
+    AHardMarkedNext:= PrevItem.ItemHardMark;
+    AUnmodifiedNext:= PrevItem.ItemAction=aeaClearModified;
+  end;
 
   //don't undo if one item left: unmodified-mark
   if ACurList.IsEmpty then exit;
 
-  Item:= nil;
+  CurItem:= nil;
   ACurList.DeleteLast;
   ACurList.Locked:= true;
 
+  if ACurList=FUndoList then
+    OtherList:= FRedoList
+  else
+    OtherList:= FUndoList;
+
+  case CurAction of
+    aeaChange,
+    aeaDelete,
+    aeaInsert:
+      begin
+        bEnableEventAfter:= ASoftMarked or AHardMarked;
+      end;
+    aeaCaretJump:
+      begin
+        bEnableEventAfter:= true;
+      end;
+    else
+      begin
+        bEnableEventAfter:= false;
+      end;
+  end;
+
+  if Length(CurCaretsArray)>0 then
+  begin
+    NEventX:= CurCaretsArray[0].X;
+    NEventY:= CurCaretsArray[0].Y; //CurIndex is 0 for CaretJump
+  end
+  else
+  begin
+    NEventX:= -1;
+    NEventY:= -1;
+  end;
+
+  bEnableEventBefore:= (NEventY>=0) and (NEventY<>FLastUndoY);
+  FLastUndoY:= NEventY;
+
+  if bWithoutPause then
+  begin
+    bEnableEventBefore:= false;
+    bEnableEventAfter:= false;
+  end;
+
+  if bEnableEventBefore then
+    if Assigned(FOnUndoBefore) then
+      FOnUndoBefore(Self, NEventX, NEventY);
+
   try
-    case AAction of
+    case CurAction of
       aeaChange:
         begin
-          if IsIndexValid(AIndex) then
+          if IsIndexValid(CurIndex) then
           begin
-            Lines[AIndex]:= AText;
-            LinesState[AIndex]:= ALineState;
+            Lines[CurIndex]:= CurText;
+            LinesState[CurIndex]:= CurLineState;
           end;
         end;
 
       aeaChangeEol:
         begin
-          if IsIndexValid(AIndex) then
+          if IsIndexValid(CurIndex) then
           begin
-            LinesEnds[AIndex]:= AEnd;
-            LinesState[AIndex]:= ALineState;
+            LinesEnds[CurIndex]:= CurLineEnd;
+            LinesState[CurIndex]:= CurLineState;
           end;
         end;
 
       aeaInsert:
         begin
-          if IsIndexValid(AIndex) then
-            LineDelete(AIndex);
+          if IsIndexValid(CurIndex) then
+            LineDelete(CurIndex);
         end;
 
       aeaDelete:
         begin
-          if AIndex>=Count then
-            LineAddRaw(AText, AEnd)
+          if CurIndex>=Count then
+            LineAddRaw(CurText, CurLineEnd)
           else
-            LineInsertRaw(AIndex, AText, AEnd);
-          if IsIndexValid(AIndex) then
-            LinesState[AIndex]:= ALineState;
+            LineInsertRaw(CurIndex, CurText, CurLineEnd);
+          if IsIndexValid(CurIndex) then
+            LinesState[CurIndex]:= CurLineState;
         end;
 
       aeaClearModified:
         begin
-          if ACurList=FUndoList then
-            OtherList:= FRedoList
-          else
-            OtherList:= FUndoList;
-
           OtherList.AddUnmodifiedMark;
           exit;
-        end
+        end;
 
-      //else
-      //  raise Exception.Create('Unknown undo action');
+      aeaCaretJump:
+        begin
+          OtherList.Add(CurAction, 0, '', cEndNone, cLineStateNone, CurCaretsArray, CurMarkersArray, ACommandCode);
+        end;
     end;
 
-    SetCaretsArray(ACarets);
-    SetMarkersArray(AMarkers);
+    if Length(CurCaretsArray)>0 then
+      SetCaretsArray(CurCaretsArray);
+    SetMarkersArray(CurMarkersArray);
+
+    if bEnableEventAfter then
+      if Assigned(FOnUndoAfter) then
+        FOnUndoAfter(Self, NEventX, NEventY);
 
     ActionDeleteDupFakeLines;
   finally
@@ -1812,8 +1975,11 @@ begin
     FOnSetMarkersArray(L);
 end;
 
-procedure TATStrings.DoAddUndo(AAction: TATEditAction; AIndex: integer;
-  const AText: atString; AEnd: TATLineEnds; ALineState: TATLineState);
+procedure TATStrings.AddUndoItem(AAction: TATEditAction; AIndex: integer;
+  const AText: atString; AEnd: TATLineEnds; ALineState: TATLineState;
+  ACommandCode: integer);
+var
+  CurList: TATUndoList;
 begin
   if cEditActionSetsModified[AAction] then
   begin
@@ -1822,45 +1988,44 @@ begin
     Inc(FModifiedVersion);
   end;
 
-  if FUndoList=nil then Exit;
-  if FRedoList=nil then Exit;
+  if FUndoList=nil then exit;
+  if FRedoList=nil then exit;
 
-  //handle CaretJump special
-  //if previous item was also Jump, dont add new item  (don't make huge list on many clicks)
-  //also not needed to call DoAddUpdate
+  if not FUndoList.Locked then
+    CurList:= FUndoList
+  else
+  if not FRedoList.Locked then
+    CurList:= FRedoList
+  else
+    exit;
+
+  //handle CaretJump:
+  //if last item was also CaretJump, delete the last item  (don't make huge list on many clicks)
   if AAction=aeaCaretJump then
   begin
-    if FUndoList.Locked then exit;
-    if (FUndoList.Count>0) and (FUndoList.Last.ItemAction=AAction) then exit;
-    FUndoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray, GetMarkersArray);
-    exit;
-  end;
-
-  if not FUndoList.Locked and not FRedoList.Locked then
-    FRedoList.Clear;
-
-  //normal editing - add to Undo
-  if not FUndoList.Locked then
-  begin
-    DoAddUpdate(AIndex, AAction);
-    FUndoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray, GetMarkersArray);
+    if (CurList.Count>0) and (CurList.Last.ItemAction=AAction) then
+      CurList.DeleteLast;
   end
   else
-  //called from Undo - add to Redo
-  if not FRedoList.Locked then
   begin
-    DoAddUpdate(AIndex, AAction);
-    FRedoList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray, GetMarkersArray);
+    if not FUndoList.Locked and not FRedoList.Locked then
+      FRedoList.Clear;
+    AddUpdatesAction(AIndex, AAction);
   end;
+
+  CurList.Add(AAction, AIndex, AText, AEnd, ALineState, GetCaretsArray, GetMarkersArray, ACommandCode);
 end;
 
-procedure TATStrings.DoUndoRedo(AUndo: boolean; AGrouped: boolean);
+procedure TATStrings.UndoOrRedo(AUndo: boolean; AGrouped: boolean);
 var
   List, ListOther: TATUndoList;
+  LastItem: TATUndoItem;
   bSoftMarked,
   bHardMarked,
   bHardMarkedNext,
   bMarkedUnmodified: boolean;
+  NCommandCode: integer;
+  NTickCount: QWord;
 begin
   if not Assigned(FUndoList) then Exit;
   if not Assigned(FRedoList) then Exit;
@@ -1878,10 +2043,35 @@ begin
 
   //ShowMessage('Undo list:'#10+FUndolist.DebugText);
 
+  {
+  solve CudaText #3261:
+   - Type something on line e.g. 100
+   - Press Ctrl+F and find any text on line e.g. 25
+   - Go to main window and try Undo/Redo
+  it undoes/redoes editing on the line 100, but moves the caret to line 25.
+  Usually first time it doesn't jump (as expected) but after repeating steps 2 and 3 it's starting to jump again.
+  }
+  if Length(CaretsAfterLastEdition)>0 then
+    SetCaretsArray(CaretsAfterLastEdition);
+
+  {
+  solve CudaText #3268
+  - Type something in line 100
+  - Scroll screen to line 1 (to hide line 100 from the screen)
+  - Perform undo
+  In my case I see blink but don't see the change itself on the line 100.
+  }
+  FLastUndoY:= -1;
+
   repeat
+    //better to have this, e.g. for Undo after Ctrl+A, Del
+    //we can have not fixed 'chain reaction of pauses'
+    if Application.Terminated then Break;
+
+    if List.Count=0 then Break;
     if List.IsEmpty then Break;
 
-    DoUndoSingle(List, bSoftMarked, bHardMarked, bHardMarkedNext, bMarkedUnmodified);
+    UndoSingle(List, bSoftMarked, bHardMarked, bHardMarkedNext, bMarkedUnmodified, NCommandCode, NTickCount);
 
     //handle unmodified
     //don't clear FModified if List.IsEmpty! http://synwrite.sourceforge.net/forums/viewtopic.php?f=5&t=2504
@@ -1900,26 +2090,37 @@ begin
       Continue;
     if not AGrouped then
       Break;
+
+    //make commands with non-zero ItemCommandCode grouped (ie 'move lines up/down')
+    if NCommandCode<>0 then
+      if List.Count>0 then
+      begin
+        LastItem:= List.Last;
+        if LastItem.ItemCommandCode=NCommandCode then
+          if Abs(Int64(LastItem.ItemTickCount)-Int64(NTickCount))<List.PauseForMakingGroup then
+            Continue;
+      end;
+
     if bSoftMarked then
       Break;
   until false;
 
-  //apply Softmark to ListOther
+  //apply SoftMark to ListOther
   if bSoftMarked and AGrouped then
     ListOther.SoftMark:= true;
+
+  //to fix this:
+  // - new tab, make 5 lines "dd'
+  // - caret at end of 1st line
+  // - Shift+Alt+Down to make 5 carets column
+  // - do fast: 'd', Undo, 'dd', Undo, 'd', Undo...
+  // -> it gave return to single caret, but must return to multi-carets
+  // https://github.com/Alexey-T/CudaText/issues/3274#issuecomment-810522418
+  if bSoftMarked then
+    List.SoftMark:= true;
 end;
 
-procedure TATStrings.Undo(AGrouped: boolean);
-begin
-  DoUndoRedo(true, AGrouped);
-end;
-
-procedure TATStrings.Redo(AGrouped: boolean);
-begin
-  DoUndoRedo(false, AGrouped);
-end;
-
-procedure TATStrings.DoClearUndo(ALocked: boolean = false);
+procedure TATStrings.ClearUndo(ALocked: boolean = false);
 begin
   if Assigned(FUndoList) then
   begin
@@ -1940,7 +2141,7 @@ begin
   end;
 end;
 
-procedure TATStrings.DoClearLineStatesUpdated;
+procedure TATStrings.ClearLineStatesUpdated;
 var
   i: integer;
 begin
@@ -1948,7 +2149,7 @@ begin
     FList.GetItem(i)^.Ex.Updated:= false;
 end;
 
-procedure TATStrings.DoSaveLastEditPos(AX: integer; AY: integer);
+procedure TATStrings.ActionSaveLastEditionPos(AX: integer; AY: integer);
 var
   Ar: TATPointArray;
 begin
@@ -1967,13 +2168,13 @@ begin
     Ar:= GetCaretsArray;
 
   if Length(Ar)>0 then
-    FSavedCaretsArray:= Ar;
+    CaretsAfterLastEdition:= Ar;
 end;
 
-procedure TATStrings.DoGotoLastEditPos;
+procedure TATStrings.ActionGotoLastEditionPos;
 begin
-  if Length(FSavedCaretsArray)>0 then
-    SetCaretsArray(FSavedCaretsArray);
+  if Length(CaretsAfterLastEdition)>0 then
+    SetCaretsArray(CaretsAfterLastEdition);
 end;
 
 procedure TATStrings.ActionDeleteDupFakeLines;
@@ -1986,15 +2187,15 @@ procedure TATStrings.ActionDeleteAllBlanks;
 var
   i: integer;
 begin
-  DoClearUndo;
-  DoClearLineStates(false);
+  ClearUndo;
+  ClearLineStates(false);
 
   for i:= Count-1 downto 0 do
     if LinesBlank[i] then
       FList.Delete(i);
 
   ActionAddFakeLineIfNeeded;
-  DoClearLineStates(false);
+  ClearLineStates(false);
 
   DoEventChange(cLineChangeDeletedAll, -1, 1);
   DoEventLog(0);
@@ -2004,15 +2205,15 @@ procedure TATStrings.ActionDeleteAdjacentBlanks;
 var
   i: integer;
 begin
-  DoClearUndo;
-  DoClearLineStates(false);
+  ClearUndo;
+  ClearLineStates(false);
 
   for i:= Count-1 downto 1{!} do
     if LinesBlank[i] and LinesBlank[i-1] then
       FList.Delete(i);
 
   ActionAddFakeLineIfNeeded;
-  DoClearLineStates(false);
+  ClearLineStates(false);
 
   DoEventChange(cLineChangeDeletedAll, -1, 1);
   DoEventLog(0);
@@ -2022,15 +2223,15 @@ procedure TATStrings.ActionDeleteAdjacentDups;
 var
   i: integer;
 begin
-  DoClearUndo;
-  DoClearLineStates(false);
+  ClearUndo;
+  ClearLineStates(false);
 
   for i:= Count-1 downto 1{!} do
     if (LinesLen[i]=LinesLen[i-1]) and (Lines[i]=Lines[i-1]) then
       FList.Delete(i);
 
   ActionAddFakeLineIfNeeded;
-  DoClearLineStates(false);
+  ClearLineStates(false);
 
   DoEventChange(cLineChangeDeletedAll, -1, 1);
   DoEventLog(0);
@@ -2041,8 +2242,8 @@ var
   i, j, NLen: integer;
   S: UnicodeString;
 begin
-  DoClearUndo;
-  DoClearLineStates(false);
+  ClearUndo;
+  ClearLineStates(false);
 
   for i:= Count-1 downto 1{!} do
   begin
@@ -2059,7 +2260,7 @@ begin
   end;
 
   ActionAddFakeLineIfNeeded;
-  DoClearLineStates(false);
+  ClearLineStates(false);
 
   DoEventChange(cLineChangeDeletedAll, -1, 1);
   DoEventLog(0);
@@ -2080,8 +2281,8 @@ begin
     exit;
   end;
 
-  DoClearUndo;
-  DoClearLineStates(false);
+  ClearUndo;
+  ClearLineStates(false);
 
   mid:= Cnt div 2;
   if Odd(Cnt) then
@@ -2091,7 +2292,7 @@ begin
     FList.Exchange(i, Cnt-1-i);
 
   ActionAddFakeLineIfNeeded;
-  DoClearLineStates(false);
+  ClearLineStates(false);
 
   DoEventChange(cLineChangeDeletedAll, -1, 1);
   DoEventLog(0);
@@ -2111,27 +2312,34 @@ begin
     exit;
   end;
 
-  DoClearUndo;
-  DoClearLineStates(false);
+  ClearUndo;
+  ClearLineStates(false);
 
   // https://stackoverflow.com/a/14006825/6792690
   for i:= Cnt-1 downto 1 do
     FList.Exchange(i, Random(i+1));
 
   ActionAddFakeLineIfNeeded;
-  DoClearLineStates(false);
+  ClearLineStates(false);
 
   DoEventChange(cLineChangeDeletedAll, -1, 1);
   DoEventLog(0);
 end;
 
-procedure TATStrings.ActionAddJumpToUndo;
+procedure TATStrings.ActionAddJumpToUndo(constref ACaretsArray: TATPointArray);
+var
+  Item: TATUndoItem;
 begin
-  DoAddUndo(aeaCaretJump, 0, '', cEndNone, cLineStateNone);
+  if FUndoList.Locked then exit;
+  AddUndoItem(aeaCaretJump, 0, '', cEndNone, cLineStateNone, FCommandCode);
+  Item:= FUndoList.Last;
+  if Assigned(Item) then
+    if Length(ACaretsArray)>0 then
+      Item.ItemCarets:= ACaretsArray;
 end;
 
 
-procedure TATStrings.DoAddUpdate(N: integer; AAction: TATEditAction);
+procedure TATStrings.AddUpdatesAction(N: integer; AAction: TATEditAction);
 begin
   if not Assigned(FListUpdates) then Exit;
 
@@ -2270,8 +2478,8 @@ end;
 procedure TATStrings.DoEventLog(ALine: integer); inline;
 begin
   if not FEnabledChangeEvents then exit;
-  if Assigned(FOnLog) then
-    FOnLog(Self, ALine);
+  if Assigned(FOnChangeLog) then
+    FOnChangeLog(Self, ALine);
 end;
 
 procedure TATStrings.DoEventChange(AChange: TATLineChangeKind; ALineIndex, AItemCount: integer);
@@ -2291,8 +2499,8 @@ begin
   if Assigned(FGutterDecor2) then
     FGutterDecor2.Update(AChange, ALineIndex, AItemCount, Count);
 
-  if Assigned(FOnChange) then
-    FOnChange(Self, AChange, ALineIndex, AItemCount);
+  if Assigned(FOnChangeEx) then
+    FOnChangeEx(Self, AChange, ALineIndex, AItemCount);
 end;
 
 procedure TATStrings.ClearSeparators;
@@ -2367,8 +2575,8 @@ begin
       Func:= @Compare_DescNoCase;
   end;
 
-  DoClearUndo;
-  DoClearLineStates(false);
+  ClearUndo;
+  ClearLineStates(false);
 
   for i:= Count-1 downto 0 do
     if LinesLen[i]=0 then
@@ -2380,7 +2588,7 @@ begin
     FList.SortRange(AFrom, ATo, Func);
 
   ActionAddFakeLineIfNeeded;
-  DoClearLineStates(false);
+  ClearLineStates(false);
 
   //this clears all bookmarks, ranges, decors - it's ok
   DoEventChange(cLineChangeDeletedAll, -1, 1);

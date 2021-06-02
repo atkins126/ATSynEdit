@@ -202,6 +202,12 @@ For forward sel, pair (PosY, PosX) is after pair (EndY, EndX); for backward sel 
 
 Carets object is sorted by text position, method Sort does this. Duplicate carets (they appear during work with multi-carets) are auto removed. If you try to add overlapping caret selections, they will be auto merged to one caret. To add/delete carets, use methods Add, Clear. Also ATSynEdit has methods DoCaretNNNNN, eg DoCaretSingle makes single caret.
 
+=== CaretsSel object ===
+
+type TATCaretSelections in unit atsynedit_carets. It is helping object, internally it holds array of carets coordinates, sorted by text position, but only for carets with selection (carets w/o selection are not included). It is read-only, ie it's needed only to find some info about selections, not to store it. Finding some info about selections is much faster with CaretsSel object, though you can use Carets object too (slower). It uses binary search.
+
+Note: object is updated (from contents of Carets) in Paint method, not immediately after you add/change something in Carets.
+
 === Keymap object ===
 
 type TATKeymap in unit atsynedit_keymap. 
@@ -532,6 +538,7 @@ Encodings
 * Add OnCreate event to new form.
 * How to load file "unit1.pas":
 
+<syntaxhighlight lang=pascal>
     procedure TForm1.FormCreate(Sender: TObject);
     begin
       ed:= TATSynEdit.Create(Self);
@@ -542,6 +549,7 @@ Encodings
       ed.OptRulerVisible:= false;
       ed.LoadFromFile(ExtractFilePath(Application.ExeName)+'unit1.pas');
     end;
+</syntaxhighlight>
 
 * How to save file: call "ed.SaveToFile()".
 
@@ -655,22 +663,28 @@ There're 2 ways:
 
 You can set handler of OnCalcHilite event. Adapter is different way to do the same. Instead of using event, you write code in the new class which is child of TATAdapterHilite. Then you link adapter to editor:
 
+<syntaxhighlight lang=pascal>
   Adapter.AddEditor(editor1);
   Adapter.AddEditor(editor2); //if 2 editors share the same text buffer
+</syntaxhighlight>
 
 To unlink adapter from all editors, call:
 
+<syntaxhighlight lang=pascal>
   Adapter.AddEditor(nil);
+</syntaxhighlight>
 
 If adapter assigned, editor will call adapter's methods (first called adapter, next OnCalcHilite).
 
 See file "atsynedit_adapters.pas". It has base class for such adapters.
 Main method in adapter, which is called by ATSynEdit is:
 
+<syntaxhighlight lang=pascal>
   procedure OnEditorCalcHilite(Sender: TObject;
       var AParts: TATLineParts;
       ALineIndex, ACharIndex, ALineLen: integer;
       var AColorAfterEol: TColor);
+</syntaxhighlight>
 
 Parameters here:
 
@@ -695,11 +709,13 @@ Each editor holds its own Carets object, so carets/selections are separate.
 
 Tech details: items in ATStrings object have fields:
 
+<syntaxhighlight lang=pascal>
     ItemHidden: packed array[0..cMaxStringsClients-1] of ByteBool;
-      //this line is fully hidden
+      // this line is fully hidden
     ItemFoldFrom: packed array[0..cMaxStringsClients-1] of byte;
-      //0: line not folded
-      //>0: line folded from this char-pos
+      //  0: line not folded
+      // >0: line folded from this char-pos
+</syntaxhighlight>
 
 (constant can be changed in source).
 These fields allow to hold separate fold-info for each "editor client" of ATStrings. Each client must have it's own EditorIndex (0 to cMaxStringsClients-1). Example, make 4 editors ed0..ed3.

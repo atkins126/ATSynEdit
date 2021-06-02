@@ -475,7 +475,10 @@ var
   bWithBom: boolean;
 begin
   AForcedToANSI:= false;
-  Clear;
+
+  //LoadFromFile already calls Clear
+  if Count>0 then
+    Clear(false{AWithEvent});
 
   bWithBom:= false;
   NStreamSize:= Stream.Size;
@@ -553,7 +556,7 @@ end;
 
 procedure TATStrings.LoadFromStream(Stream: TStream);
 begin
-  DoClearUndo(true);
+  ClearUndo(true);
   DoLoadFromStream(Stream, FLoadingForcedANSI);
   DoFinalizeLoading;
 end;
@@ -587,8 +590,8 @@ procedure TATStrings.DoFinalizeLoading;
 begin
   DoDetectEndings;
   ActionAddFakeLineIfNeeded;
-  DoClearLineStates(false);
-  DoClearUndo;
+  ClearLineStates(false);
+  ClearUndo;
   Modified:= false;
   FProgressValue:= 0;
 end;

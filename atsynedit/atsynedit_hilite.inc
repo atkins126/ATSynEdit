@@ -33,7 +33,7 @@ procedure TATSynEdit.DoCalcLineHilite(const AData: TATWrapItem;
   AMainText: boolean);
 var
   nMaxOffset, nCharIndex, nLineIndex, nLineLen: integer;
-  bEnableHilite, bFound: boolean;
+  bEnableHilite: boolean;
 begin
   nMaxOffset:= Min(ACharsMax, AData.NLength-ACharsSkipped);
   nLineIndex:= AData.NLineIndex;
@@ -48,21 +48,12 @@ begin
   if bEnableHilite then
   if Assigned(FAdapterHilite) then
   begin
-    {$ifdef atsynedit_cache}
-    //DynamicHilite must disable cache
-    FAdapterCache.Enabled:= not FAdapterHilite.DynamicHiliteActiveNow(Strings.Count);
-    bFound:= FAdapterCache.Get(nLineIndex, nCharIndex, AParts, AColorAfter);
-    if not bFound then
-    begin
-      FAdapterHilite.OnEditorCalcHilite(Self, AParts, nLineIndex, nCharIndex, nLineLen, AColorAfter);
-      FAdapterCache.Add(nLineIndex, nCharIndex, AParts, AColorAfter);
-      {$ifdef debug_show_fps}
-      Inc(FMissMain);
-      {$endif}
-    end;
-    {$else}
-    FAdapterHilite.OnEditorCalcHilite(Self, AParts, nLineIndex, nCharIndex, nLineLen, AColorAfter);
-    {$endif}
+    FAdapterHilite.OnEditorCalcHilite(Self, AParts,
+      nLineIndex,
+      nCharIndex,
+      nLineLen,
+      AColorAfter,
+      AMainText);
   end;
 
   //2) get hilites from OnCalcHilite
@@ -100,14 +91,34 @@ procedure TATSynEdit.DoPartCalc_CreateNew(var AParts: TATLineParts;
   AOffsetMax, ALineIndex, ACharIndex: integer; AColorBG: TColor);
 var
   bSel, bSelPrev, bAdd: boolean;
-  nIndex, i: integer;
+  nPart, nOffset, nLen, nIndex, i: integer;
+  ch: WideChar;
 begin
   if not TempSel_IsLineWithSelection(ALineIndex) then
   begin
-    AParts[0].Offset:= 0;
-    AParts[0].Len:= Min(Strings.LinesLen[ALineIndex], AOffsetMax);
-    AParts[0].ColorFont:= FColorFont;
-    AParts[0].ColorBG:= AColorBG;
+    nOffset:= 0;
+    nLen:= Min(Strings.LinesLen[ALineIndex], AOffsetMax);
+    nPart:= 0;
+
+    //split leading tab-chars to separate part
+    //this is much needed for gtk2, which paints ExtTextOut with Dx much slower
+    repeat
+      if nLen=0 then Break;
+      ch:= Strings.LineCharAt(ALineIndex, ACharIndex+nOffset+1);
+      if ch<>#9 then Break;
+      AParts[0].Offset:= 0;
+      Inc(AParts[0].Len);
+      AParts[0].ColorFont:= FColorFont;
+      AParts[0].ColorBG:= AColorBG;
+      Inc(nOffset);
+      Dec(nLen);
+      nPart:= 1;
+    until false;
+
+    AParts[nPart].Offset:= nOffset;
+    AParts[nPart].Len:= nLen;
+    AParts[nPart].ColorFont:= FColorFont;
+    AParts[nPart].ColorBG:= AColorBG;
     exit;
   end;
 
@@ -184,10 +195,10 @@ begin
   //we loop over parts
   //- fully selected parts, colorize them.
   //- fully unselected parts, skip.
-  //- partly selected parts, save them to FLineOtherParts,
+  //- partly selected parts, save them to FPartsSel,
   //  and do slow loop (by offsets) over them.
 
-  FillChar(FLineOtherParts, SizeOf(TATLineParts), 0);
+  FillChar(FPartsSel, SizeOf(TATLineParts), 0);
   iPart:= 0;
 
   for i:= Low(AParts) to High(AParts) do
@@ -203,8 +214,8 @@ begin
         end;
       cRangePartlySelected:
         begin
-          FLineOtherParts[iPart].Offset:= AParts[i].Offset;
-          FLineOtherParts[iPart].Len:= AParts[i].Len;
+          FPartsSel[iPart].Offset:= AParts[i].Offset;
+          FPartsSel[iPart].Len:= AParts[i].Len;
           Inc(iPart);
         end;
     end;
@@ -212,7 +223,7 @@ begin
 
   for iPart:= Low(AParts) to High(AParts) do
   begin
-    PartOther:= @FLineOtherParts[iPart];
+    PartOther:= @FPartsSel[iPart];
     if PartOther^.Len=0 then Break;
 
     bSel:= false;
@@ -278,7 +289,7 @@ begin
     NIndex:= Strings.Bookmarks.Find(ALine);
     if NIndex>=0 then
     begin
-      BmKind:= Strings.Bookmarks[NIndex].Data.Kind;
+      BmKind:= Strings.Bookmarks[NIndex]^.Data.Kind;
       AColor:= Colors.BookmarkBG;
       if Assigned(FOnCalcBookmarkColor) then
         FOnCalcBookmarkColor(Self, BmKind, AColor);
@@ -288,7 +299,7 @@ begin
       NIndex:= Strings.Bookmarks2.Find(ALine);
       if NIndex>=0 then
       begin
-        BmKind:= Strings.Bookmarks2[NIndex].Data.Kind;
+        BmKind:= Strings.Bookmarks2[NIndex]^.Data.Kind;
         AColor:= Colors.BookmarkBG;
         if Assigned(FOnCalcBookmarkColor) then
           FOnCalcBookmarkColor(Self, BmKind, AColor);

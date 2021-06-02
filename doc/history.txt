@@ -1,4 +1,44 @@
 
+2021.05.13
++ add: prop OptBorderVisible (border inside the control, note that BorderStyle is border around the control)
+
+2021.05.11
++ add: prop GutterDecorAlignment
+
+2021.04.30
+* changed OptUnprintedEndArrowOrDot (bool) to OptUnprintedEndSymbol (0, 1, 2)
+
+2021.04.06
++ OptDimUnfocused<0 is allowed, to blend with white
+
+2021.03.26
++ prop OptUndoForCaretJump
++ prop OptUndoPause
++ show small animation + pause for Undo/Redo
+
+2021.03.08
++ prop OptMaskChar and OptMaskCharUsed, to make password-input fields
++ prop OptInputNumberOnly
++ prop OptInputNumberAllowNegative
+
+2021.03.05
++ prop OptKeyUpDownAllowToEdge
+
+2021.03.04
++ prop FoldingAsString
+
+2021.02.26
++ BGRABitmap is now required (used to paint minimap)
++ minimap painting now runs in a thread! much faster!
+
+2021.02.22
++ refactored for future rendeding with threads
+* removed prop OptNumbersSkippedChar, always draw a 'dot'
+
+2021.02.06
++ add: OptDimUnfocusedBack (0..255, 0: don't change)
++ add: OptMicromapShowForMinCount (=2, only for multiline editors)
+
 2021.01.24
 * change: refactored all code in atstringproc_htmlcolor unit, all funcs are moved into class
 
@@ -42,7 +82,7 @@
 + add: OptStapleIndentConsidersEnd (default: false)
 
 2020.06.14
-+ add: internal cache of calculated URLs, so: 
++ add: internal cache of calculated URLs, so:
    a) scrolling by Up/Down key runs URL search for 1 new line, not for all visible lines
    b) moving caret w/o scrolling don't run URL search at all
 + add: OptMinLineLenToCalcURL (default 4)

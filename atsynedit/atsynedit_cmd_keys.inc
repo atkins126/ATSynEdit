@@ -4,8 +4,9 @@ function TATSynEdit.DoCommand_KeyHome: TATCommandResults;
 var
   Caret: TATCaretItem;
   Pnt: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
   NLine, NIndent, NWrapped, i: integer;
+  IndentKind: TATLineIndentKind;
 begin
   for i:= 0 to FCarets.Count-1 do
   begin
@@ -24,7 +25,7 @@ begin
     end;
 
     if FOptKeyHomeToNonSpace then
-      NIndent:= Strings.LineIndent(NLine);
+      Strings.GetIndentProp(NLine, NIndent, IndentKind);
 
     if (NWrapped>0) and (Caret.PosX>NWrapped) then
       Caret.PosX:= NWrapped
@@ -49,7 +50,7 @@ var
   Caret: TATCaretItem;
   Pnt: TPoint;
   NLine, NLenTotal, NLen, NWrapped, i: integer;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
 begin
   for i:= 0 to FCarets.Count-1 do
   begin
@@ -187,8 +188,10 @@ end;
 function TATSynEdit.DoCommand_KeyUpDown_NextLine(ADown: boolean; ALines: integer): TATCommandResults;
 var
   Caret: TATCaretItem;
+  NCount: integer;
   i, Y: integer;
 begin
+  NCount:= Strings.Count;
   for i:= 0 to Carets.Count-1 do
   begin
     Caret:= Carets[i];
@@ -200,8 +203,22 @@ begin
 
     if not IsLineFolded(Y) then
     begin
-      if Y<0 then Y:= Unfolded_FirstLineNumber;
-      if Y>=Strings.Count then Y:= Unfolded_LastLineNumber;
+      //moved above 1st line
+      if Y<0 then
+      begin
+        Y:= Unfolded_FirstLineNumber;
+        if Y=0 then
+          if FOptKeyUpDownAllowToEdge then
+            Caret.PosX:= 0;
+      end;
+      //moved below last line
+      if Y>=NCount then
+      begin
+        Y:= Unfolded_LastLineNumber;
+        if Y=NCount-1 then
+          if FOptKeyUpDownAllowToEdge then
+            Caret.PosX:= Strings.LinesLen[Y];
+      end;
       Caret.PosY:= Y;
     end;
   end;
@@ -216,10 +233,10 @@ function TATSynEdit.DoCommand_KeyUpDown_Wrapped(ADown: boolean; ALines: integer)
 var
   Caret: TATCaretItem;
   Pnt: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
   NWrapIndex, i: integer;
 const
-  cGapActions: array[boolean] of TATGapCoordAction =
+  cGapActions: array[boolean] of TATEditorGapCoordAction =
     (cGapCoordIgnore, cGapCoordMoveDown);
 begin
   for i:= 0 to FCarets.Count-1 do
@@ -235,14 +252,31 @@ begin
 
     Pnt.X:= Caret.CoordX;
     if FOptKeyUpDownKeepColumn and (Caret.SavedX>0) then
+    begin
       Pnt.X:= Caret.SavedX;
+      //needed for arrow-down on last line; w/o this, arrow-up (2 times) jumps weird
+      Caret.SavedX_Pre:= 0;
+    end;
 
     //prevent any action if caret on first line (arrow up) / last line (arrow down)
     //this allows to avoid jump to end of last line (arrow down)
     NWrapIndex:= WrapInfo.FindIndexOfCaretPos(Point(Caret.PosX, Caret.PosY));
 
-    if not ADown and (NWrapIndex=0) then exit;
-    if ADown and (NWrapIndex=WrapInfo.Count-1) then exit;
+    //caret is on 1st line. jump to very begin?
+    if (not ADown) and (NWrapIndex=0) then
+    begin
+      if FOptKeyUpDownAllowToEdge then
+        Caret.PosX:= 0;
+      Continue;
+    end;
+
+    //caret is on last line. jump to very end?
+    if ADown and (NWrapIndex=WrapInfo.Count-1) then
+    begin
+      if FOptKeyUpDownAllowToEdge then
+        Caret.PosX:= Strings.LinesLen[Strings.Count-1];
+      Continue;
+    end;
 
     //increase/decrease Caret.CoordY and calculate pos from it
     Pnt.Y:= Caret.CoordY + ALines*FCharSize.Y*BoolToPlusMinusOne[ADown];
@@ -387,7 +421,7 @@ begin
     end;
   end;
 
-  //changed because of issue CudaText#3065
+  //cResultCaretLazy is to fix CudaText #3065
   if AJump=cWordjumpToPrev then
     Result:= [cResultCaretTop, cResultCaretLazy]
   else
@@ -420,7 +454,7 @@ const
 var
   R: TRect;
   P: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
 begin
   Result:= [];
 

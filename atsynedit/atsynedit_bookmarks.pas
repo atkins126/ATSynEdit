@@ -25,11 +25,11 @@ type
 
   TATBookmarkData = packed record
     Tag: Int64;
-    Hint: string[55];
     LineNum: integer;
     Kind: word;
     AutoDelete: TATBookmarkAutoDelete;
     ShowInBookmarkList: boolean;
+    Hint: PChar;
   end;
 
   { TATBookmarkItem }
@@ -44,8 +44,10 @@ type
   { TATBookmarkItems }
 
   TATBookmarkItems = class(specialize TFPGList<TATBookmarkItem>)
+  protected
+    procedure Deref(Item: Pointer); override;
   public
-    function ItemPtr(AIndex: integer): PATBookmarkItem; inline;
+    function ItemPtr(AIndex: integer): PATBookmarkItem;
   end;
 
 type
@@ -54,8 +56,7 @@ type
   TATBookmarks = class
   private
     FList: TATBookmarkItems;
-    function GetItem(N: integer): TATBookmarkItem;
-    procedure SetItem(N: integer; const AValue: TATBookmarkItem);
+    function GetItemPtr(N: integer): PATBookmarkItem;
   public
     constructor Create; virtual;
     destructor Destroy; override;
@@ -65,7 +66,7 @@ type
     function DeleteByTag(const ATag: Int64): boolean;
     function Count: integer;
     function IsIndexValid(N: integer): boolean;
-    property Items[N: integer]: TATBookmarkItem read GetItem write SetItem; default;
+    property ItemPtr[N: integer]: PATBookmarkItem read GetItemPtr; default;
     procedure Add(const AData: TATBookmarkData);
     function Find(ALineNum: integer): integer;
     procedure DeleteDups;
@@ -78,6 +79,16 @@ uses
   Math;
 
 { TATBookmarkItems }
+
+procedure TATBookmarkItems.Deref(Item: Pointer);
+begin
+  with PATBookmarkItem(Item)^ do
+    if Data.Hint<>nil then
+    begin
+      StrDispose(Data.Hint);
+      Data.Hint:= nil;
+    end;
+end;
 
 function TATBookmarkItems.ItemPtr(AIndex: integer): PATBookmarkItem;
 begin
@@ -93,19 +104,21 @@ end;
 
 constructor TATBookmarkItem.Assign(const AData: TATBookmarkData);
 begin
-  Data:= AData;
+  Data.Tag:= AData.Tag;
+  Data.LineNum:= AData.LineNum;
+  Data.Kind:= AData.Kind;
+  Data.AutoDelete:= AData.AutoDelete;
+  Data.ShowInBookmarkList:= AData.ShowInBookmarkList;
+  if Data.Hint<>nil then
+    StrDispose(Data.Hint);
+  Data.Hint:= StrNew(AData.Hint);
 end;
 
 { TATBookmarks }
 
-function TATBookmarks.GetItem(N: integer): TATBookmarkItem;
+function TATBookmarks.GetItemPtr(N: integer): PATBookmarkItem;
 begin
-  Result:= FList[N];
-end;
-
-procedure TATBookmarks.SetItem(N: integer; const AValue: TATBookmarkItem);
-begin
-  FList[N]:= AValue;
+  Result:= FList.ItemPtr(N);
 end;
 
 constructor TATBookmarks.Create;
@@ -168,6 +181,8 @@ var
   Item: TATBookmarkItem;
   nLine, i: integer;
 begin
+  FillChar(Item, SizeOf(Item), 0);
+
   for i:= 0 to Count-1 do
   begin
     nLine:= FList.ItemPtr(i)^.Data.LineNum;
@@ -175,8 +190,7 @@ begin
     //bookmark already exists: overwrite
     if nLine=AData.LineNum then
     begin
-      Item.Assign(AData);
-      Items[i]:= Item;
+      ItemPtr[i]^.Assign(AData);
       Exit
     end;
 
@@ -196,14 +210,14 @@ end;
 
 procedure TATBookmarks.DeleteDups;
 var
-  Item1, Item2: TATBookmarkItem;
+  Item1, Item2: PATBookmarkItem;
   i: integer;
 begin
   for i:= Count-1 downto 1 do
   begin
-    Item1:= GetItem(i);
-    Item2:= GetItem(i-1);
-    if Item1.Data.LineNum=Item2.Data.LineNum then
+    Item1:= GetItemPtr(i);
+    Item2:= GetItemPtr(i-1);
+    if Item1^.Data.LineNum=Item2^.Data.LineNum then
       Delete(i);
   end;
 end;

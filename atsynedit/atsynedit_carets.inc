@@ -2,7 +2,7 @@
 
 function TATSynEdit.IsLineWithCaret(ALine: integer): boolean; inline;
 begin
-  Result:= FCarets.IsLineListed(ALine);
+  Result:= FCarets.IsLineWithCaret(ALine);
 end;
 
 function TATSynEdit.IsLinePartWithCaret(ALine: integer; ACoordY: integer): boolean;
@@ -12,7 +12,7 @@ var
   Coord: TPoint;
 begin
   Result:= false;
-  //like Carets.IsLineListed with more code
+  //like Carets.IsLineWithCaret with more code
   for i:= 0 to Carets.Count-1 do
   begin
     Caret:= Carets[i];
@@ -28,16 +28,18 @@ end;
 
 procedure TATSynEdit.DoCaretsAddOnColumnBlock(APos1, APos2: TPoint; const ARect: TRect);
 var
+  St: TATStrings;
   i: integer;
 begin
+  St:= Strings;
   for i:= APos1.Y to APos2.Y do
   begin
     if i=APos1.Y then
       Carets.Clear;
     Carets.Add(
-      Strings.ColumnPosToCharPos(i, ARect.Right, FTabHelper),
+      St.ColumnPosToCharPos(i, ARect.Right, FTabHelper),
       i,
-      Strings.ColumnPosToCharPos(i, ARect.Left, FTabHelper),
+      St.ColumnPosToCharPos(i, ARect.Left, FTabHelper),
       i
       );
   end
@@ -62,8 +64,11 @@ end;
 procedure TATSynEdit.DoCaretsColumnToPoint(AX, AY: integer);
 var
   P, PM1, PM2: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
 begin
+  //needed to Undo multi-carets to last multi-caret state, before single caret appears
+  Strings.SetGroupMark;
+
   DoCaretSingleAsIs;
   with Carets[0] do
     begin P.X:= PosX; P.Y:= PosY; end;
@@ -84,7 +89,7 @@ begin
     Inc(PM1.Y, FCharSize.Y);
     P:= ClientPosToCaretPos(PM1, Details);
     if P.Y>=0 then
-      if not Carets.IsLineListed(P.Y) then
+      if not Carets.IsLineWithCaret(P.Y) then
         Carets.Add(P.X, P.Y);
   until PM1.Y>=PM2.Y;
 
@@ -163,7 +168,7 @@ function _DoCaretPosToClientPos(
   ACharSize: TPoint;
   ATabHelper: TATStringTabHelper;
   const ARect: TRect;
-  const AScrollHorz, AScrollVert: TATSynScrollInfo;
+  const AScrollHorz, AScrollVert: TATEditorScrollInfo;
   APreferLeftSide: boolean): TPoint;
 var
   Item: TATWrapItem;
@@ -171,14 +176,34 @@ var
   NIndex1, NIndex2, NLineIndexTop, NFromStart, NWidth: integer;
   NScrolledHorzSmooth: integer;
   NScrolledVert: integer;
+  NLineCount: integer;
   Str: atString;
   bLineHuge: boolean;
   bAsciiOnly: boolean;
+  bAfterEnd: boolean;
   i: integer;
 begin
   Result.X:= -1;
   Result.Y:= -1;
-  if not AStrings.IsIndexValid(P.Y) then Exit;
+
+  if P.Y<0 then Exit;
+
+  NLineCount:= AStrings.Count;
+  if NLineCount=0 then
+  begin
+    Result.X:= ARect.Left;
+    Result.Y:= ARect.Top;
+    Exit;
+  end;
+
+  //if needed pos after file-end, we
+  //1) calculate pos of last char, 2) increase Y by char height
+  bAfterEnd:= P.Y>=NLineCount;
+  if bAfterEnd then
+  begin
+    P.Y:= NLineCount-1;
+    P.X:= AStrings.LinesLen[P.Y];
+  end;
 
   AWrapInfo.FindIndexesOfLineNumber(P.Y, NIndex1, NIndex2);
   if NIndex1<0 then Exit;
@@ -186,7 +211,6 @@ begin
   //prepare optimization
   StringItem:= AStrings.GetItemPtr(P.Y);
   bAsciiOnly:= StringItem^.HasAsciiNoTabs;
-  bLineHuge:= StringItem^.CharLen>OptMaxLineLenForAccurateCharWidths;
 
   NScrolledHorzSmooth:= AScrollHorz.SmoothPos-AScrollHorz.NPixelOffset;
   NScrolledVert:= Max(0, AScrollVert.NPos);
@@ -194,6 +218,7 @@ begin
   for i:= NIndex1 to NIndex2 do
   begin
     Item:= AWrapInfo[i];
+    bLineHuge:= Item.NLength>OptMaxLineLenForAccurateCharWidths;
 
     if (P.X<Item.NCharIndex-1) then Continue;
     if (Item.NFinal=cWrapItemMiddle) then
@@ -237,6 +262,13 @@ begin
     //coords of corner
     Inc(Result.X, ARect.Left);
     Inc(Result.Y, ARect.Top);
+
+    if bAfterEnd then
+    begin
+      Result.X:= ARect.Left;
+      Inc(Result.Y, ACharSize.Y);
+    end;
+
     Exit
   end;
 end;
@@ -250,13 +282,15 @@ function _DoClientPosToCaretPos(
   ACharSize: TPoint;
   ATabHelper: TATStringTabHelper;
   const ARect: TRect;
-  const AScrollHorz, AScrollVert: TATSynScrollInfo;
+  const AScrollHorz, AScrollVert: TATEditorScrollInfo;
   AVirtualPos: boolean;
-  out ADetails: TATPosDetails;
-  AGapCoordAction: TATGapCoordAction;
+  out ADetails: TATEditorPosDetails;
+  AGapCoordAction: TATEditorGapCoordAction;
   AAfterEofUsesLastLen: boolean;
   AEditorIndex: integer): TPoint;
 var
+  CharOffsets: TATIntFixedArray;
+  NLineLenOriginal, NLineLenTrimmed: integer;
   NIndex, NIndexDecrement, NPixels: integer;
   Item: TATWrapItem;
   ItemGap: TATGapItem;
@@ -363,13 +397,20 @@ begin
     if not AStrings.IsIndexValid(Result.Y) then
       exit(Point(-1, -1));
 
-    Str:= AStrings.LineSub(
-      Result.Y,
-      Item.NCharIndex,
-      //optimized for huge line
-      Min(Item.NLength,
-          AScrollHorz.NPos + ARect.Width div ACharSize.X)
-      );
+    NLineLenOriginal:= Item.NLength;
+    NLineLenTrimmed:= Min(Item.NLength, AScrollHorz.NPos + ARect.Width div ACharSize.X);
+
+    if NLineLenOriginal>OptMaxLineLenForAccurateCharWidths then
+    begin
+      Str:= StringOfCharW('N', NLineLenOriginal); //fake to calc CharOffsets only
+      ATabHelper.CalcCharOffsets(Item.NLineIndex, Str, CharOffsets, 0);
+      Str:= AStrings.LineSub(Item.NLineIndex, Item.NCharIndex, NLineLenTrimmed);
+    end
+    else
+    begin
+      Str:= AStrings.LineSub(Item.NLineIndex, Item.NCharIndex, NLineLenTrimmed);
+      ATabHelper.CalcCharOffsets(Item.NLineIndex, Str, CharOffsets, 0);
+    end;
 
     if bGapGoesToEnd then
       Result.X:= Length(Str) + Item.NCharIndex-1
@@ -380,6 +421,7 @@ begin
       Result.X:= ATabHelper.FindClickedPosition(
         Result.Y,
         Str,
+        CharOffsets,
         NPixels,
         ACharSize.X,
         AllowVirtual,
@@ -412,8 +454,8 @@ begin
 end;
 
 function TATSynEdit.ClientPosToCaretPos(P: TPoint;
-  out ADetails: TATPosDetails;
-  AGapCoordAction: TATGapCoordAction = cGapCoordToLineEnd): TPoint; inline;
+  out ADetails: TATEditorPosDetails;
+  AGapCoordAction: TATEditorGapCoordAction = cGapCoordToLineEnd): TPoint; inline;
 begin
   Result:= _DoClientPosToCaretPos(P,
     FWrapInfo,
@@ -435,7 +477,7 @@ procedure TATSynEdit.SetCaretBlinkEnabled(AValue: boolean);
 begin
   if FCaretBlinkEnabled=AValue then Exit;
   FCaretBlinkEnabled:= AValue;
-  DoPaintModeBlinking;
+  TimerBlinkEnable;
 end;
 
 procedure TATSynEdit.DoScroll_IndentFromTop(AWrapInfoIndex, AIndentVert: integer); inline;
@@ -595,6 +637,7 @@ begin
   if APlaceCaret then
   begin
     DoCaretSingle(APos.X, APos.Y, APosEnd.X, APosEnd.Y);
+    ActionAddJumpToUndo;
     DoEventCarets;
   end;
 
@@ -742,14 +785,14 @@ end;
 
 function TATSynEdit.GetCaretsArray: TATPointArray;
 begin
-  SetLength(Result, 0);
+  SetLength(Result{%H-}, 0);
   if Assigned(FCarets) then
     Result:= FCarets.AsArray;
 end;
 
 function TATSynEdit.GetMarkersArray: TATInt64Array;
 begin
-  SetLength(Result, 0);
+  SetLength(Result{%H-}, 0);
   if Assigned(FMarkers) then
     Result:= FMarkers.AsArray;
 end;
@@ -771,9 +814,15 @@ procedure TATSynEdit.DoCaretsExtend(ADown: boolean; ALines: integer);
 var
   Caret: TATCaretItem;
   MoreCarets: TATCarets;
+  St: TATStrings;
   X, Y: integer;
   i, j: integer;
 begin
+  St:= Strings;
+
+  //it's needed to Undo to multi-carets, not to single caret
+  St.SetGroupMark;
+
   MoreCarets:= TATCarets.Create;
   try
     for i:= 0 to Carets.Count-1 do
@@ -781,11 +830,11 @@ begin
       Caret:= Carets[i];
       for j:= 1 to ALines do
       begin
-        if not Strings.IsIndexValid(Caret.PosY) then Break;
-        X:= Strings.CharPosToColumnPos(Caret.PosY, Caret.PosX, FTabHelper);
+        if not St.IsIndexValid(Caret.PosY) then Break;
+        X:= St.CharPosToColumnPos(Caret.PosY, Caret.PosX, FTabHelper);
         Y:= Caret.PosY+BoolToPlusMinusOne[ADown]*j;
-        if not Strings.IsIndexValid(Y) then Break;
-        X:= Strings.ColumnPosToCharPos(Y, X, FTabHelper);
+        if not St.IsIndexValid(Y) then Break;
+        X:= St.ColumnPosToCharPos(Y, X, FTabHelper);
         MoreCarets.Add(X, Y);
       end;
     end;
@@ -1046,7 +1095,7 @@ function TATSynEdit.DoCaretsKeepOnScreen(AMoveDown: boolean): boolean;
 var
   Caret: TATCaretItem;
   Pnt: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
   i: integer;
 begin
   Result:= false;
@@ -1075,7 +1124,7 @@ begin
 end;
 
 
-procedure TATSynEdit.DoCaretsApplyShape(var R: TRect; Props: TATCaretProps; W, H: integer);
+procedure TATSynEdit.DoCaretsApplyShape(var R: TRect; Props: TATCaretShape; W, H: integer);
 var
   Y0, DY: integer;
 begin
@@ -1109,9 +1158,9 @@ begin
   Result:= Carets.IsAnyCaretInVisibleRect(FRectMain);
 end;
 
-{ TATCaretProps }
+{ TATCaretShape }
 
-procedure TATCaretProps.Assign(Obj: TATCaretProps);
+procedure TATCaretShape.Assign(Obj: TATCaretShape);
 begin
   Width:= Obj.Width;
   Height:= Obj.Height;

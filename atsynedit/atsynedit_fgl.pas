@@ -968,7 +968,11 @@ end;
 
 class function TFPGList.ItemIsManaged: Boolean;
 begin
-  Result:= True; //todo: IsManagedType(T);
+{$IFNDEF VER3_0}
+  Result:=IsManagedType(T);
+{$ELSE}
+  Result:=True; // Fallback to old behaviour  
+{$ENDIF}
 end;
 
 function TFPGList.GetEnumerator: TFPGListEnumeratorSpec;
@@ -1755,7 +1759,7 @@ end;
 
 procedure TFPGMapObject.CopyData(Src, Dest: Pointer);
 begin
-  if Assigned(Pointer(Dest^)) then
+  if Assigned(Pointer(Dest^)) And FFreeObjects then
     TData(Dest^).Free;
   TData(Dest^) := TData(Src^);
 end;

@@ -20,13 +20,12 @@ uses
   InterfaceBase,
   Classes, SysUtils, Graphics,
   Controls, ExtCtrls, Menus, Forms, Clipbrd,
+  syncobjs,
   LMessages, LCLType, LCLVersion,
   LazUTF8,
   EncConv,
-  {$ifdef use_bg}
   BGRABitmap,
   BGRABitmapTypes,
-  {$endif}
   ATStringProc,
   ATStringProc_Separator,
   ATStrings,
@@ -63,33 +62,33 @@ type
     atkString
     );
 
-  TATSynEditScrollStyle = (
+  TATEditorScrollbarStyle = (
     aessHide,
     aessShow,
     aessAuto
     );
 
-  TATMiddleClickAction = (
+  TATEditorMiddleClickAction = (
     mcaNone,
     mcaScrolling,
     mcaPaste,
     mcaGotoDefinition
     );
 
-  TATPosDetails = record
+  TATEditorPosDetails = record
     EndOfWrappedLine: boolean;
     OnGapItem: TATGapItem;
     OnGapPos: TPoint;
   end;
 
-  TATMouseDoubleClickAction = (
+  TATEditorDoubleClickAction = (
     cMouseDblClickNone,
     cMouseDblClickSelectWordChars,
     cMouseDblClickSelectAnyChars,
     cMouseDblClickSelectEntireLine
     );
 
-  TATMouseActionId = (
+  TATEditorMouseAction = (
     cMouseActionNone,
     cMouseActionClickSimple,
     cMouseActionClickRight,
@@ -100,14 +99,14 @@ type
     cMouseActionMakeCaretsColumn
     );
 
-  TATMouseActionRecord = record
+  TATEditorMouseActionRecord = record
     MouseState: TShiftState;
-    MouseActionId: TATMouseActionId;
+    MouseActionId: TATEditorMouseAction;
   end;
 
-  TATMouseActions = array of TATMouseActionRecord;
+  TATEditorMouseActionArray = array of TATEditorMouseActionRecord;
 
-  TATDirection = (
+  TATEditorDirection = (
     cDirNone,
     cDirLeft,
     cDirRight,
@@ -115,13 +114,13 @@ type
     cDirDown
     );
 
-  TATRulerNumeration = (
+  TATEditorRulerNumeration = (
     cRulerNumeration_0_10_20,
     cRulerNumeration_1_11_21,
     cRulerNumeration_1_10_20
     );
 
-  TATSelectColumnDirection = (
+  TATEditorSelectColumnDirection = (
     cDirColumnLeft,
     cDirColumnRight,
     cDirColumnUp,
@@ -130,7 +129,7 @@ type
     cDirColumnPageDown
     );
 
-  TATScrollbarsArrowsKind = (
+  TATEditorScrollbarsArrowsKind = (
     cScrollArrowsNormal,
     cScrollArrowsHidden,
     cScrollArrowsAbove,
@@ -138,7 +137,7 @@ type
     cScrollArrowsCorner
     );
 
-  TATCaseConvert = (
+  TATEditorCaseConvert = (
     cCaseLower,
     cCaseUpper,
     cCaseTitle,
@@ -162,18 +161,18 @@ type
     );
   TATCommandResults = set of TATCommandResult;
 
-  TATGapCoordAction = (
+  TATEditorGapCoordAction = (
     cGapCoordIgnore,
     cGapCoordToLineEnd,
     cGapCoordMoveDown
     );
 
-  TATGutterIconsKind = (
+  TATEditorGutterIcons = (
     cGutterIconsPlusMinus,
     cGutterIconsTriangles
     );
 
-  TATPasteCaret = (
+  TATEditorPasteCaret = (
     cPasteCaretNoChange,
     cPasteCaretLeftBottom,
     cPasteCaretRightBottom,
@@ -182,7 +181,7 @@ type
     cPasteCaretColumnRight
     );
 
-  TATFoldStyle = ( //affects folding of blocks without "text hint" passed from adapter
+  TATEditorFoldStyle = ( //affects folding of blocks without "text hint" passed from adapter
     cFoldHereWithDots, //show "..." from fold-pos
     cFoldHereWithTruncatedText, //show truncated line instead of "..."
     cFoldFromEndOfLine, //looks like Lazarus: show "..." after line, bad with 2 blocks starting at the same line
@@ -190,20 +189,20 @@ type
     cFoldFromNextLine //looks like SynWrite: don't show "...", show separator line
     );
 
-  TATFoldRangeCmd = (
+  TATEditorFoldRangeCommand = (
     cFoldingFold,
     cFoldingUnfold,
     cFoldingToggle
     );
 
-  TATStapleEdge = (
+  TATEditorStapleEdge = (
     cStapleEdgeNone,
     cStapleEdgeAngle,
     cStapleEdgeLine
     );
 
 type
-  TATAutoIndentKind = (
+  TATEditorAutoIndentKind = (
     cIndentAsPrevLine,
     cIndentSpacesOnly,
     cIndentTabsAndSpaces,
@@ -211,20 +210,20 @@ type
     cIndentToOpeningBracket
     );
 
-  TATPageUpDownSize = (
+  TATEditorPageDownSize = (
     cPageSizeFull,
     cPageSizeFullMinus1,
     cPageSizeHalf
     );
 
-  TATSynWrapMode = (
+  TATEditorWrapMode = (
     cWrapOff,
     cWrapOn,
     cWrapAtMargin,
     cWrapAtWindowOrMargin
     );
 
-  TATSynNumbersStyle = (
+  TATEditorNumbersStyle = (
     cNumbersAll,
     cNumbersNone,
     cNumbersEach10th,
@@ -232,15 +231,15 @@ type
     cNumbersRelative
     );
 
-  TATSynPaintFlag = (
-    cPaintUpdateBitmap,
-    cPaintUpdateCaretsCoords
+  TATEditorInternalFlag = (
+    cIntFlagBitmap,
+    cIntFlagResize
     );
-  TATSynPaintFlags = set of TATSynPaintFlag;
+  TATEditorInternalFlags = set of TATEditorInternalFlag;
 
-  { TATSynScrollInfo }
+  { TATEditorScrollInfo }
 
-  TATSynScrollInfo = record
+  TATEditorScrollInfo = record
     Vertical: boolean;
     NMax: integer;
     NPage: integer;
@@ -257,13 +256,13 @@ type
     procedure SetLast; inline;
     function TopGapVisible: boolean; inline;
     function TotalOffset: integer; inline;
-    class operator =(const A, B: TATSynScrollInfo): boolean;
+    class operator =(const A, B: TATEditorScrollInfo): boolean;
   end;
 
 type
-  { TATCaretProps }
+  { TATCaretShape }
 
-  TATCaretProps = class
+  TATCaretShape = class
   public
     //Value>=0: in pixels
     //Value<0: in percents
@@ -271,20 +270,45 @@ type
     Width: integer;
     Height: integer;
     EmptyInside: boolean;
-    procedure Assign(Obj: TATCaretProps);
+    procedure Assign(Obj: TATCaretShape);
+  end;
+
+type
+  { TMinimapThread }
+
+  TATMinimapThread = class(TThread)
+  public
+    Editor: TObject;
+  protected
+    procedure Execute; override;
   end;
 
 const
+  cUsePaintStatic = true;
   cMaxIndentVert = 100;
+  cInitAutoPairForMultiCarets = true;
+  cInitInputNumberAllowNegative = true;
+  cInitMaskChar = '*';
+  cInitScrollAnimationSteps = 4;
+  cInitScrollAnimationSleep = 0;
   cInitUndoLimit = 5000;
-  cInitUndoMaxCarets = cInitUndoLimit;
+  cInitUndoMaxCarets = 20000;
   cInitUndoIndentVert = 15;
   cInitUndoIndentHorz = 20;
+  cInitUndoPause = 300;
+  cInitUndoPause2 = 1000;
+  cInitUndoPauseHighlightLine = true;
+  cInitUndoForCaretJump = true;
+  cInitMicromapShowForMinCount = 2;
   cInitScrollbarHorzAddSpace = 2;
   cInitIdleInterval = 0; //1000; //0 dont fire OnIdle, faster
   cInitTextOffsetFromLine = {$ifdef windows} 0 {$else} 1 {$endif};
   cInitCaretsPrimitiveColumnSelection = true;
   cInitCaretsMultiToColumnSel = true;
+  cInitBorderVisible = true;
+  cInitBorderWidth = 1;
+  cInitBorderWidthFocused = 1;
+  cInitRulerNumeration = cRulerNumeration_0_10_20;
   cInitWrapMode = cWrapOff;
   cInitWrapEnabledForMaxLines = 60*1000;
   cInitSpacingText = 1;
@@ -317,6 +341,7 @@ const
   cInitMaxLineLenToCalcURL = 300;
   cInitStapleHiliteAlpha = 180;
   cInitZebraAlphaBlend = 235;
+  cInitDimUnfocusedBack = 0;
 
   cGutterBands = 6;
   cGutterSizeBm = 16;
@@ -357,7 +382,7 @@ const
   cHintBookmarkDy = 16;
   cUrlMarkerTag = -100;
 
-  cUrlRegex_Email = '\b(mailto:)?\w[\w\-\.]*@\w[\w\-\.]*\.\w{2,}\b';
+  cUrlRegex_Email = '\b(mailto:)?\w[\w\-\+\.]*@\w[\w\-\.]*\.\w{2,}\b';
   cUrlRegex_WebBegin = 'https?://|ftp://|magnet:\?|www\.|ftp\.';
   cUrlRegex_WebSite = '\w[\w\-\.@]*(:\d+)?'; // @ for password; :\d+ is port
   cUrlRegex_WebAnchor = '(\#[\w\-]*)?';
@@ -365,12 +390,11 @@ const
   cUrlRegex_Web =
     '\b(' + cUrlRegex_WebBegin + ')'
     + cUrlRegex_WebSite
-    + '(/[~\w\.\-\+\/%]*)?' //folders
+    + '(/[~\w\.\-\+\/%@]*)?' //folders
     + cUrlRegex_WebParams
     + cUrlRegex_WebAnchor;
   cUrlRegexInitial = cUrlRegex_Email + '|' + cUrlRegex_Web;
 
-  cTextEditorLocked: string = 'Wait...';
   cTextHintScrollPrefix: string = 'Line';
 
   cStrMenuitemFoldAll: string = 'Fold all';
@@ -388,6 +412,9 @@ var
   cRectEmpty: TRect = (Left: 0; Top: 0; Right: 0; Bottom: 0);
   ATClipboardColumnFormat: TClipboardFormat = 0; //must be inited
   ATClipboardColumnSignature: integer = $1000;
+
+var
+  OptEditorDebugTiming: boolean = false;
 
 type
   TATSynEditClickEvent = procedure(Sender: TObject; var AHandled: boolean) of object;
@@ -432,7 +459,7 @@ type
 
   TATEditorTempOptions = record
     FontSize: integer;
-    WrapMode: TATSynWrapMode;
+    WrapMode: TATEditorWrapMode;
     ShowMinimap: boolean;
     ShowMicromap: boolean;
     ShowRuler: boolean;
@@ -459,7 +486,8 @@ type
     FTimerBlink: TTimer;
     FTimerScroll: TTimer;
     FTimerNiceScroll: TTimer;
-    FPaintFlags: TATSynPaintFlags;
+    FTimerDelayedParsing: TTimer;
+    FPaintFlags: TATEditorInternalFlags;
     FPaintLocked: integer;
     FBitmap: TBitmap;
     FKeymap: TATKeymap;
@@ -474,11 +502,10 @@ type
     FStringsExternal: TATStrings;
     FTabHelper: TATStringTabHelper;
     FAdapterHilite: TATAdapterHilite;
-    FAdapterCache: TATAdapterHiliteCache;
     FAdapterIME: TATAdapterIME;
     FFold: TATSynRanges;
     FFoldImageList: TImageList;
-    FFoldStyle: TATFoldStyle;
+    FFoldStyle: TATEditorFoldStyle;
     FFoldUnderlineOffset: integer;
     FFoldEnabled: boolean;
     FFoldTooltipVisible: boolean;
@@ -498,14 +525,15 @@ type
     FSelRect: TRect;
     FSelRectBegin: TPoint;
     FSelRectEnd: TPoint;
+    FVisibleColumns: integer;
     FCarets: TATCarets;
     FCaretShowEnabled: boolean;
     FCaretShown: boolean;
     FCaretBlinkEnabled: boolean;
     FCaretBlinkTime: integer;
-    FCaretPropsNormal: TATCaretProps;
-    FCaretPropsOverwrite: TATCaretProps;
-    FCaretPropsReadonly: TATCaretProps;
+    FCaretShapeNormal: TATCaretShape;
+    FCaretShapeOverwrite: TATCaretShape;
+    FCaretShapeReadonly: TATCaretShape;
     FCaretVirtual: boolean;
     FCaretSpecPos: boolean;
     FCaretStopUnfocused: boolean;
@@ -555,15 +583,21 @@ type
     FMouseDragMinimapDelta: integer;
     FMouseDragMinimapSelHeight: integer;
     FMouseDownAndColumnSelection: boolean;
-    FMouseAutoScroll: TATDirection;
-    FMouseActions: TATMouseActions;
+    FMouseAutoScroll: TATEditorDirection;
+    FMouseActions: TATEditorMouseActionArray;
+    FLockInput: boolean;
+    FLastControlWidth: integer;
+    FLastControlHeight: integer;
     FLastHotspot: integer;
     FLastTextCmd: integer;
     FLastTextCmdText: atString;
     FLastCommandChangedText: boolean;
     FLastCommandChangedText2: boolean;
     FLastCommandMakesColumnSel: boolean;
+    FLastCommandDelayedParsingOnLine: integer;
     FLastLineOfSlowEvents: integer;
+    FLastUndoTick: QWord;
+    FLastUndoPaused: boolean;
     FLineTopTodo: integer;
     FIsCaretShapeChangedFromAPI: boolean;
     FIsReadOnlyChanged: boolean;
@@ -582,6 +616,7 @@ type
     FOnClickLink: TATSynEditClickLinkEvent;
     FOnIdle: TNotifyEvent;
     FOnChange: TNotifyEvent;
+    FOnChangeLog: TATStringsChangeLogEvent;
     FOnChangeState: TNotifyEvent;
     FOnChangeCaretPos: TNotifyEvent;
     FOnChangeModified: TNotifyEvent;
@@ -605,8 +640,7 @@ type
     FOnHotspotExit: TATSynEditHotspotEvent;
     FWrapInfo: TATWrapInfo;
     FWrapTemps: TATWrapItems;
-    FWrapColumn: integer;
-    FWrapMode: TATSynWrapMode;
+    FWrapMode: TATEditorWrapMode;
     FWrapUpdateNeeded: boolean;
     FWrapIndented: boolean;
     FWrapAddSpace: integer;
@@ -619,7 +653,6 @@ type
     FUnprintedEof,
     FUnprintedEnds,
     FUnprintedEndsDetails: boolean;
-    FPrevVisibleColumns: integer;
     FPrevModified: boolean;
     FCharSize: TPoint;
     FCharSizeMinimap: TPoint;
@@ -628,6 +661,7 @@ type
     FGutter: TATGutter;
     FGutterDecor: TATGutterDecor;
     FGutterDecorImages: TImageList;
+    FGutterDecorAlignment: TAlignment;
     FGutterBandBookmarks: integer;
     FGutterBandNumbers: integer;
     FGutterBandStates: integer;
@@ -635,7 +669,7 @@ type
     FGutterBandSeparator: integer;
     FGutterBandEmpty: integer;
     FGutterBandDecor: integer;
-    FColors: TATSynEditColors;
+    FColors: TATEditorColors;
     FColorFont: TColor;
     FColorBG: TColor;
     FRulerHeight: integer;
@@ -649,17 +683,18 @@ type
     FClientW: integer; //saved on Paint, to avoid calling Controls.ClientWidth/ClientHeight
     FClientH: integer;
     FLineBottom: integer;
-    FLineParts: TATLineParts; //size is huge, so not local var
-    FLineOtherParts: TATLineParts; //size is huge, so not local var
+    FParts: TATLineParts; //this is used in DoPaintLine
+    FPartsMinimap: TATLineParts; //this is used by DoPaintMinimapLine, in thread
+    FPartsSel: TATLineParts; //this is used in DoPartCalc_ApplySelectionOver
     FScrollVert,
     FScrollHorz,
     FScrollVertMinimap,
-    FScrollHorzMinimap: TATSynScrollInfo;
+    FScrollHorzMinimap: TATEditorScrollInfo;
     FScrollbarVert,
     FScrollbarHorz: TATScrollbar;
     FScrollbarLock: boolean;
     FPrevHorz,
-    FPrevVert: TATSynScrollInfo;
+    FPrevVert: TATEditorScrollInfo;
     FMinimapWidth: integer;
     FMinimapCharWidth: integer;
     FMinimapCustomScale: integer;
@@ -669,33 +704,35 @@ type
     FMinimapSelColorChange: integer;
     FMinimapAtLeft: boolean;
     FMinimapTooltipVisible: boolean;
+    FMinimapTooltipEnabled: boolean;
+    FMinimapTooltipBitmap: TBitmap;
     FMinimapTooltipLinesCount: integer;
     FMinimapTooltipWidthPercents: integer;
-    FMinimapTooltip: TPanel;
-    FMinimapCachedPainting: boolean;
     FMinimapHiliteLinesWithSelection: boolean;
     FMicromap: TATMicromap;
     FMicromapVisible: boolean;
     FMicromapScaleDiv: integer;
+    FMicromapShowForMinCount: integer;
     FFoldedMarkList: TATFoldedMarks;
     FFoldedMarkCurrent: TATFoldedMark;
     FFoldedMarkTooltip: TPanel;
     FPaintCounter: integer;
     FPaintStarted: boolean;
-    {$ifdef debug_fps}
+    FPaintWorking: boolean;
     FTickMinimap: QWord;
     FTickAll: QWord;
-    FMissMain: integer;
-    FMissMinimap: integer;
-    {$endif}
     FShowOsBarVert: boolean;
     FShowOsBarHorz: boolean;
-    {$ifdef use_bg}
-    FFastBmp: TBGRABitmap;
-    {$endif}
+    FMinimapBmp: TBGRABitmap;
+    FMinimapThread: TATMinimapThread;
+    FEventMapStart: TSimpleEvent; //fired when need to start MinimapThread work
+    FEventMapDone: TSimpleEvent; //fired by MinimapThread, when it's work done
+    FColorOfStates: array[TATLineState] of TColor;
+    FFoldingAsStringTodo: string;
 
     //these options are implemented in CudaText, they are dummy here
-    FOptAutoCloseBrackets: string;
+    FOptAutoPairForMultiCarets: boolean;
+    FOptAutoPairChars: string;
     FOptAutocompleteAutoshowCharCount: integer;
     FOptAutocompleteTriggerChars: string;
     FOptAutocompleteCommitChars: string;
@@ -705,6 +742,12 @@ type
     FOptAutocompleteCommitIfSingleItem: boolean;
 
     //options
+    FOptInputNumberOnly: boolean;
+    FOptInputNumberAllowNegative: boolean;
+    FOptMaskChar: WideChar;
+    FOptMaskCharUsed: boolean;
+    FOptScrollAnimationSteps: integer;
+    FOptScrollAnimationSleep: integer;
     FOptScaleFont: integer;
     FOptIdleInterval: integer;
     FOptPasteAtEndMakesFinalEmptyLine: boolean;
@@ -713,14 +756,20 @@ type
     FOptMinLineLenToCalcURL: integer;
     FOptMaxLineLenToCalcURL: integer;
     FOptMaxLinesToCountUnindent: integer;
-    FOptScrollStyleVert: TATSynEditScrollStyle;
-    FOptScrollStyleHorz: TATSynEditScrollStyle;
+    FOptScrollStyleVert: TATEditorScrollbarStyle;
+    FOptScrollStyleHorz: TATEditorScrollbarStyle;
     FOptScrollSmooth: boolean;
     FOptScrollIndentCaretHorz: integer; //offsets for caret-moving: if caret goes out of control
     FOptScrollIndentCaretVert: integer; //must be 0, >0 gives jumps on move-down
     FOptUndoLimit: integer;
+    FOptUndoGrouped: boolean;
+    FOptUndoMaxCarets: integer;
     FOptUndoIndentVert: integer;
     FOptUndoIndentHorz: integer;
+    FOptUndoPause: integer;
+    FOptUndoPause2: integer;
+    FOptUndoPauseHighlightLine: boolean;
+    FOptUndoForCaretJump: boolean;
     FOptScrollbarsNew: boolean;
     FOptScrollbarHorizontalAddSpace: integer;
     FOptScrollLineCommandsKeepCaretOnScreen: boolean;
@@ -733,8 +782,8 @@ type
     FOptStapleWidthPercent: integer;
     FOptStapleHiliteActive: boolean;
     FOptStapleHiliteActiveAlpha: integer;
-    FOptStapleEdge1: TATStapleEdge;
-    FOptStapleEdge2: TATStapleEdge;
+    FOptStapleEdge1: TATEditorStapleEdge;
+    FOptStapleEdge2: TATEditorStapleEdge;
     FOptStapleIndentConsidersEnd: boolean;
     FOptMouseEnableAll: boolean;
     FOptMouseEnableNormalSelection: boolean;
@@ -743,7 +792,7 @@ type
     FOptCaretsPrimitiveColumnSelection: boolean;
     FOptCaretsAddedToColumnSelection: boolean;
     FOptCaretPreferLeftSide: boolean;
-    FOptCaretPosAfterPasteColumn: TATPasteCaret;
+    FOptCaretPosAfterPasteColumn: TATEditorPasteCaret;
     FOptCaretFixAfterRangeFolded: boolean;
     FOptCaretsMultiToColumnSel: boolean;
     FOptMarkersSize: integer;
@@ -755,21 +804,21 @@ type
     FOptSavingForceFinalEol: boolean;
     FOptSavingTrimSpaces: boolean;
     FOptSavingTrimFinalEmptyLines: boolean;
-    FOptUndoGrouped: boolean;
-    FOptUndoMaxCarets: integer;
     FOptIndentSize: integer;
     FOptIndentKeepsAlign: boolean;
     FOptIndentMakesWholeLinesSelection: boolean;
+    FOptBorderVisible: boolean;
     FOptBorderWidth: integer;
     FOptBorderWidthFocused: integer;
     FOptBorderFocusedActive: boolean;
     FOptRulerVisible: boolean;
-    FOptRulerNumeration: TATRulerNumeration;
+    FOptRulerNumeration: TATEditorRulerNumeration;
     FOptRulerHeightPercents: integer;
     FOptRulerFontSizePercents: integer;
     FOptRulerMarkSizeCaret: integer;
     FOptRulerMarkSizeSmall: integer;
     FOptRulerMarkSizeBig: integer;
+    FOptRulerMarkForAllCarets: boolean;
     FOptRulerTopIndentPercents: integer;
     FOptGutterVisible: boolean;
     FOptGutterPlusSize: integer;
@@ -777,17 +826,16 @@ type
     FOptGutterShowFoldLines: boolean;
     FOptGutterShowFoldLinesAll: boolean;
     FOptGutterShowFoldLinesForCaret: boolean;
-    FOptGutterIcons: TATGutterIconsKind;
+    FOptGutterIcons: TATEditorGutterIcons;
     FOptNumbersAutosize: boolean;
     FOptNumbersAlignment: TAlignment;
-    FOptNumbersStyle: TATSynNumbersStyle;
+    FOptNumbersStyle: TATEditorNumbersStyle;
     FOptNumbersShowFirst: boolean;
     FOptNumbersShowCarets: boolean;
-    FOptNumbersSkippedChar: string;
     FOptNumbersIndentPercents: integer;
     FOptNonWordChars: atString;
     FOptAutoIndent: boolean;
-    FOptAutoIndentKind: TATAutoIndentKind;
+    FOptAutoIndentKind: TATEditorAutoIndentKind;
     FOptAutoIndentBetterBracketsCurly: boolean;
     FOptAutoIndentBetterBracketsRound: boolean;
     FOptAutoIndentBetterBracketsSquare: boolean;
@@ -800,6 +848,7 @@ type
     FOptKeyBackspaceGoesToPrevLine: boolean;
     FOptKeyPageKeepsRelativePos: boolean;
     FOptKeyUpDownNavigateWrapped: boolean;
+    FOptKeyUpDownAllowToEdge: boolean;
     FOptKeyHomeEndNavigateWrapped: boolean;
     FOptKeyUpDownKeepColumn: boolean;
     FOptCopyLinesIfNoSel: boolean;
@@ -816,7 +865,7 @@ type
     FOptMouseClickOpensURL: boolean;
     FOptMouseClickNumberSelectsLine: boolean;
     FOptMouseClickNumberSelectsLineWithEOL: boolean;
-    FOptMouse2ClickAction: TATMouseDoubleClickAction;
+    FOptMouse2ClickAction: TATEditorDoubleClickAction;
     FOptMouse2ClickOpensURL: boolean;
     FOptMouse2ClickDragSelectsWords: boolean;
     FOptMouse3ClickSelectsLine: boolean;
@@ -824,7 +873,7 @@ type
     FOptMouseDragDropCopying: boolean;
     FOptMouseDragDropCopyingWithState: TShiftStateEnum;
     FOptMouseRightClickMovesCaret: boolean;
-    FOptMouseMiddleClickAction: TATMiddleClickAction;
+    FOptMouseMiddleClickAction: TATEditorMiddleClickAction;
     FOptMouseWheelScrollVert: boolean;
     FOptMouseWheelScrollHorz: boolean;
     FOptMouseWheelScrollVertSpeed: integer;
@@ -832,7 +881,7 @@ type
     FOptMouseWheelScrollHorzWithState: TShiftStateEnum;
     FOptMouseWheelZooms: boolean;
     FOptMouseWheelZoomsWithState: TShiftStateEnum;
-    FOptKeyPageUpDownSize: TATPageUpDownSize;
+    FOptKeyPageUpDownSize: TATEditorPageDownSize;
     FOptKeyLeftRightGoToNextLineWithCarets: boolean;
     FOptKeyLeftRightSwapSel: boolean;
     FOptKeyLeftRightSwapSelAndSelect: boolean;
@@ -847,19 +896,27 @@ type
     FOptZebraActive: boolean;
     FOptZebraStep: integer;
     FOptZebraAlphaBlend: byte;
+    FOptDimUnfocusedBack: integer;
 
     //
+    class function CheckInputForNumberOnly(const S: UnicodeString; X: integer;
+      ch: WideChar; AllowNegative: boolean): boolean;
     procedure ClearSelRectPoints;
     procedure ClearMouseDownVariables;
     procedure DebugSelRect;
     function DoCalcLineLen(ALineIndex: integer): integer;
+    procedure FlushEditingChangeEx(AChange: TATLineChangeKind; ALine, AItemCount: integer);
+    procedure FlushEditingChangeLog(ALine: integer);
     function GetAttribs: TATMarkers;
     procedure GetClientSizes(out W, H: integer);
+    function GetFoldingAsString: string;
     function GetMarkers: TATMarkers;
     function GetDimRanges: TATDimRanges;
     function GetHotspots: TATHotspots;
     function GetGutterDecor: TATGutterDecor;
     function IsCaretOnVisibleRect: boolean;
+    procedure UpdateAndWait(AUpdateWrapInfo: boolean; APause: integer);
+    procedure SetFoldingAsString(const AValue: string);
     procedure SetOptShowURLsRegex(const AValue: string);
     procedure SetShowOsBarVert(AValue: boolean);
     procedure SetShowOsBarHorz(AValue: boolean);
@@ -868,11 +925,10 @@ type
     procedure DoCalcPosColor(AX, AY: integer; var AColor: TColor);
     procedure DoCalcLineEntireColor(ALine: integer; AUseColorOfCurrentLine: boolean; out AColor: TColor; out
       AColorForced: boolean; AHiliteLineWithSelection: boolean);
-    procedure DoCaretsApplyShape(var R: TRect; Props: TATCaretProps; W, H: integer);
+    procedure DoCaretsApplyShape(var R: TRect; Props: TATCaretShape; W, H: integer);
     procedure DoCaretsAddOnColumnBlock(APos1, APos2: TPoint; const ARect: TRect);
     procedure DoCaretsFixForSurrogatePairs(AMoveRight: boolean);
     function DoCaretsKeepOnScreen(AMoveDown: boolean): boolean;
-    procedure DoCaretsOnChanged(Sender: TObject);
     procedure DoCaretsAssign(NewCarets: TATCarets);
     procedure DoCaretsShift_CaretItem(Caret: TATCaretItem; APosX, APosY, AShiftX,
       AShiftY, AShiftBelowX: integer);
@@ -893,8 +949,13 @@ type
     procedure DoMenuText;
     procedure DoMinimapClick(APosY: integer);
     procedure DoMinimapDrag(APosY: integer);
-    procedure DoStringsOnChange(Sender: TObject; AChange: TATLineChangeKind; ALine, AItemCount: integer);
+    procedure DoStringsOnChangeEx(Sender: TObject; AChange: TATLineChangeKind; ALine, AItemCount: integer);
+    procedure DoStringsOnChangeLog(Sender: TObject; ALine: integer);
     procedure DoStringsOnProgress(Sender: TObject);
+    procedure DoStringsOnUndoAfter(Sender: TObject; AX, AY: integer);
+    procedure DoStringsOnUndoBefore(Sender: TObject; AX, AY: integer);
+    procedure DoScroll_SetPos(var AScrollInfo: TATEditorScrollInfo; APos: integer);
+    procedure DoScroll_LineTop(ALine: integer; AUpdate: boolean);
     procedure DoScroll_IndentFromBottom(AWrapInfoIndex, AIndentVert: integer);
     procedure DoScroll_IndentFromTop(AWrapInfoIndex, AIndentVert: integer); inline;
     procedure DoSelectionDeleteColumnBlock;
@@ -918,7 +979,6 @@ type
     procedure MenuFoldLevelClick(Sender: TObject);
     procedure MenuFoldUnfoldAllClick(Sender: TObject);
     procedure MenuFoldPlusMinusClick(Sender: TObject);
-    procedure MinimapTooltipPaint(Sender: TObject);
     procedure FoldedMarkTooltipPaint(Sender: TObject);
     procedure FoldedMarkMouseEnter(Sender: TObject);
     procedure OnNewScrollbarHorzChanged(Sender: TObject);
@@ -947,11 +1007,11 @@ type
     procedure InitDimRanges;
     procedure InitGutterDecor;
     procedure InitMarkedRange;
-    procedure InitMinimapTooltip;
     procedure InitFoldedMarkList;
     procedure InitFoldedMarkTooltip;
     procedure InitFoldImageList;
     procedure InitMenuStd;
+    procedure StartTimerDelayedParsing;
     function IsLinePartWithCaret(ALine: integer; ACoordY: integer): boolean;
     procedure MenuClick(Sender: TObject);
     procedure MenuStdPopup(Sender: TObject);
@@ -979,43 +1039,51 @@ type
     procedure TempSel_GetRangesInLineAfterPoint(AX, AY: integer; out ARanges: TATSimpleRangeArray); inline;
     //paint
     procedure PaintEx(ALineNumber: integer);
-    function DoPaint(AFlags: TATSynPaintFlags; ALineFrom: integer): boolean;
+    function DoPaint(ALineFrom: integer): boolean;
     procedure DoPaintBorder(C: TCanvas; AColor: TColor; AWidth: integer);
-    procedure DoPaintAllTo(C: TCanvas; AFlags: TATSynPaintFlags; ALineFrom: integer);
-    procedure DoPaintMainTo(C: TCanvas; ALineFrom: integer);
+    procedure DoPaintAll(C: TCanvas; ALineFrom: integer);
+    procedure DoPaintMain(C: TCanvas; ALineFrom: integer);
+    procedure DoPaintLine(C: TCanvas; ARectLine: TRect; ACharSize: TPoint;
+      var AScrollHorz, AScrollVert: TATEditorScrollInfo;
+      const AWrapIndex: integer; var ATempParts: TATLineParts);
+    procedure DoPaintMinimapLine(ARectLine: TRect; ACharSize: TPoint;
+      var AScrollHorz, AScrollVert: TATEditorScrollInfo;
+      const AWrapIndex: integer; var ATempParts: TATLineParts);
+    procedure DoPaintGutterOfLine(C: TCanvas; ARect: TRect; ACharSize: TPoint;
+      AWrapIndex: integer);
     procedure DoPaintNiceScroll(C: TCanvas);
     procedure DoPaintLineNumber(C: TCanvas; ALineIndex, ACoordTop: integer; ABand: TATGutterItem);
     procedure DoPaintMarginLineTo(C: TCanvas; AX, AWidth: integer; AColor: TColor);
-    procedure DoPaintRulerTo(C: TCanvas);
+    procedure DoPaintRuler(C: TCanvas);
     procedure DoPaintRulerCaretMark(C: TCanvas; ACaretX: integer);
-    procedure DoPaintFPS(C: TCanvas);
-    procedure DoPaintTextTo(C: TCanvas; const ARect: TRect;
-      const ACharSize: TPoint; AWithGutter, AMainText: boolean;
-      var AScrollHorz, AScrollVert: TATSynScrollInfo; ALineFrom: integer);
-    procedure DoPaintTextFragmentTo(C: TCanvas; const ARect: TRect; ALineFrom,
+    procedure DoPaintRulerCaretMarks(C: TCanvas);
+    procedure DoPaintTiming(C: TCanvas);
+    procedure DoPaintText(C: TCanvas; const ARect: TRect;
+      const ACharSize: TPoint; AWithGutter: boolean;
+      var AScrollHorz, AScrollVert: TATEditorScrollInfo; ALineFrom: integer);
+    procedure DoPaintTextFragment(C: TCanvas; const ARect: TRect; ALineFrom,
       ALineTo: integer; AConsiderWrapInfo: boolean; AColorBG, AColorBorder: TColor);
     procedure DoPaintLineIndent(C: TCanvas; const ARect: TRect; ACharSize: TPoint;
       ACoordY: integer; AIndentSize: integer; AColorBG: TColor;
       AScrollPos: integer; AIndentLines: boolean);
-    {$ifdef use_bg}
-    procedure DoPaintMinimapSelTo_BGRA(C: TBGRABitmap);
-    {$else}
-    procedure DoPaintMinimapSelTo(C: TCanvas);
-    {$endif}
-    procedure DoPaintMinimapTo(C: TCanvas);
-    procedure DoPaintMicromapTo(C: TCanvas);
-    procedure DoPaintMarginsTo(C: TCanvas);
-    procedure DoPaintGapTo(C: TCanvas; const ARect: TRect; AGap: TATGapItem);
+    procedure DoPaintMinimapAllToBGRABitmap;
+    procedure DoPaintMinimapTextToBGRABitmap(const ARect: TRect;
+      ACharSize: TPoint; var AScrollHorz, AScrollVert: TATEditorScrollInfo);
+    procedure DoPaintMinimapSelToBGRABitmap;
+    procedure DoPaintMinimapTooltip(C: TCanvas);
+    procedure DoPaintMicromap(C: TCanvas);
+    procedure DoPaintMargins(C: TCanvas);
+    procedure DoPaintGap(C: TCanvas; const ARect: TRect; AGap: TATGapItem);
     procedure DoPaintFoldedMark(C: TCanvas;
       APosX, APosY, ACoordX, ACoordY: integer;
       const AMarkText: string);
     procedure DoPaintCarets(C: TCanvas; AWithInvalidate: boolean);
-    procedure DoPaintModeStatic;
-    procedure DoPaintModeBlinking;
+    procedure TimerBlinkDisable;
+    procedure TimerBlinkEnable;
     procedure DoPaintSelectedLineBG(C: TCanvas; ACharSize: TPoint;
       const AVisRect: TRect; APointLeft, APointText: TPoint;
       const AWrapItem: TATWrapItem; ALineWidth: integer;
-      const AScrollHorz: TATSynScrollInfo);
+      const AScrollHorz: TATEditorScrollInfo);
     procedure DoPaintMarkersTo(C: TCanvas);
     procedure DoPaintMarkerOfDragDrop(C: TCanvas);
     procedure DoPaintGutterPlusMinus(C: TCanvas; AX, AY: integer; APlus: boolean;
@@ -1028,7 +1096,7 @@ type
     procedure DoPaintLockedWarning(C: TCanvas);
     procedure DoPaintStaple(C: TCanvas; const R: TRect; AColor: TColor);
     procedure DoPaintStaples(C: TCanvas; const ARect: TRect; ACharSize: TPoint;
-      const AScrollHorz: TATSynScrollInfo);
+      const AScrollHorz: TATEditorScrollInfo);
     procedure DoPaintTextHintTo(C: TCanvas);
     procedure DoPaintMouseSelFrame(C: TCanvas);
     //carets
@@ -1091,12 +1159,11 @@ type
     procedure SetUndoAfterSave(AValue: boolean);
     procedure SetUndoAsString(const AValue: string);
     procedure SetUndoLimit(AValue: integer);
-    procedure SetWrapMode(AValue: TATSynWrapMode);
+    procedure SetWrapMode(AValue: TATEditorWrapMode);
     procedure SetWrapIndented(AValue: boolean);
     procedure UpdateScrollbarVert;
     procedure UpdateScrollbarHorz;
     procedure UpdateSelRectFromPoints(const P1, P2: TPoint);
-    procedure UpdateAdapterCacheSize;
     procedure UpdateInitialVars(C: TCanvas);
     procedure UpdateLinksAttribs;
     function UpdateLinksRegexObject: boolean;
@@ -1104,11 +1171,10 @@ type
     procedure UpdateCursor;
     procedure UpdateGutterAutosize;
     procedure UpdateMinimapAutosize;
-    procedure UpdateMinimapTooltip;
     procedure UpdateFoldedMarkTooltip;
     procedure UpdateClientSizes;
     function DoFormatLineNumber(N: integer): string;
-    function UpdateScrollInfoFromMessage(var Info: TATSynScrollInfo; const Msg: TLMScroll): boolean;
+    function UpdateScrollInfoFromMessage(var Info: TATEditorScrollInfo; const Msg: TLMScroll): boolean;
     procedure UpdateCaretsCoords(AOnlyLast: boolean = false);
     function GetCharSize(C: TCanvas; ACharSpacing: TPoint): TPoint;
     function GetScrollbarVisible(bVertical: boolean): boolean;
@@ -1119,6 +1185,7 @@ type
     procedure TimerBlinkTick(Sender: TObject);
     procedure TimerScrollTick(Sender: TObject);
     procedure TimerNiceScrollTick(Sender: TObject);
+    procedure TimerDelayedParsingTick(Sender: TObject);
 
     //carets
     procedure DoCaretAddToPoint(AX, AY: integer);
@@ -1127,6 +1194,7 @@ type
 
     //editing
     function IsCommandResults_CaretMove(const Res: TATCommandResults): boolean;
+    function DoCommandCore(ACmd: integer; const AText: atString): TATCommandResults;
     procedure DoCommandResults(ACmd: integer; Res: TATCommandResults);
     function DoCommand_TextInsertAtCarets(const AText: atString; AKeepCaret,
       AOvrMode, ASelectThen: boolean): TATCommandResults;
@@ -1134,21 +1202,20 @@ type
     function DoCommand_FoldLevel(ALevel: integer): TATCommandResults;
     function DoCommand_FoldAll: TATCommandResults;
     function DoCommand_FoldUnAll: TATCommandResults;
-    function DoCommand_FoldRangeAtCurLine(ACommand: TATFoldRangeCmd): TATCommandResults;
+    function DoCommand_FoldRangeAtCurLine(ACommand: TATEditorFoldRangeCommand): TATCommandResults;
     function DoCommand_FoldSelection: TATCommandResults;
     function DoCommand_TextTrimSpaces(AMode: TATTrimSpaces): TATCommandResults;
-    function DoCommand_TextChangeCase(AMode: TATCaseConvert): TATCommandResults;
+    function DoCommand_TextChangeCase(AMode: TATEditorCaseConvert): TATCommandResults;
     function DoCommand_ScaleDelta(AIncrease: boolean): TATCommandResults;
     function DoCommand_ScaleReset: TATCommandResults;
     function DoCommand_MoveSelectionUpDown(ADown: boolean): TATCommandResults;
     function DoCommand_TextInsertEmptyAboveBelow(ADown: boolean): TATCommandResults;
-    function DoCommand_SelectColumnToDirection(ADir: TATSelectColumnDirection): TATCommandResults;
+    function DoCommand_SelectColumnToDirection(ADir: TATEditorSelectColumnDirection): TATCommandResults;
     function DoCommand_SelectColumnToLineEdge(AToEnd: boolean): TATCommandResults;
     function DoCommand_RemoveOneCaret(AFirstCaret: boolean): TATCommandResults;
     function DoCommand_TextInsertColumnBlockOnce(const AText: atString; AKeepCaret: boolean): TATCommandResults;
     function DoCommand_CaretsExtend(ADown: boolean; ALines: integer): TATCommandResults;
-    function DoCommand_Undo: TATCommandResults;
-    function DoCommand_Redo: TATCommandResults;
+    function DoCommand_UndoRedo(AUndo: boolean): TATCommandResults;
     function DoCommand_TextIndentUnindent(ARight: boolean): TATCommandResults;
     function DoCommand_TextIndentUnindent_StreamBlock(ARight: boolean): TATCommandResults;
     procedure DoCommand_TextIndentUnindent_StreamBlock_OneCaret(ARight: boolean; Caret: TATCaretItem);
@@ -1234,6 +1301,19 @@ type
     TagString: string; //to store plugin specific data in CudaText
     InitialOptions: TATEditorTempOptions;
 
+    IsModifiedWrapMode: boolean;
+    IsModifiedMinimapVisible: boolean;
+    IsModifiedMicromapVisible: boolean;
+    IsModifiedRulerVisible: boolean;
+    IsModifiedGutterNumbersVisible: boolean;
+    IsModifiedGutterFoldingVisible: boolean;
+    IsModifiedGutterBookmarksVisible: boolean;
+    IsModifiedUnprintedVisible: boolean;
+    IsModifiedUnprintedSpaces: boolean;
+    IsModifiedUnprintedTrailingOnly: boolean;
+    IsModifiedUnprintedEnds: boolean;
+    IsModifiedUnprintedEndDetails: boolean;
+
     //overrides
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -1243,17 +1323,15 @@ type
     property ClientHeight: integer read FClientH;
     //updates
     procedure Invalidate; override;
-    procedure InvalidateHilitingCache;
-    procedure InvalidateHilitingCache(ALineIndex: integer);
-    procedure Update(AUpdateWrapInfo: boolean = false; AUpdateCaretsCoords: boolean = true); reintroduce;
+    procedure Update(AUpdateWrapInfo: boolean=false); reintroduce;
     procedure UpdateWrapInfo(AForceUpdate: boolean=false);
     procedure UpdateFoldedFromLinesHidden;
-    procedure UpdateScrollInfoFromSmoothPos(var AInfo: TATSynScrollInfo; APos: integer);
+    procedure UpdateScrollInfoFromSmoothPos(var AInfo: TATEditorScrollInfo; APos: integer);
     procedure UpdateFoldLineIndexer;
     function UpdateScrollbars(AdjustSmoothPos: boolean): boolean;
     procedure DoEventCarets; virtual;
     procedure DoEventScroll; virtual;
-    procedure DoEventChange(AllowOnChange: boolean=true); virtual;
+    procedure DoEventChange(ALineIndex: integer=-1; AllowOnChange: boolean=true); virtual;
     procedure DoEventState; virtual;
     procedure TimersStart;
     procedure TimersStop;
@@ -1261,6 +1339,7 @@ type
     property Strings: TATStrings read GetStrings write SetStrings;
     property Fold: TATSynRanges read FFold;
     property Carets: TATCarets read FCarets;
+    property CaretsSel: TATCaretSelections read FSel; //not used by apps (at 2021.02), but let's publish, to not forget
     property Markers: TATMarkers read GetMarkers;
     property Attribs: TATMarkers read GetAttribs;
     property Micromap: TATMicromap read FMicromap;
@@ -1268,15 +1347,15 @@ type
     property Hotspots: TATHotspots read GetHotspots;
     property Gaps: TATGaps read GetGaps;
     property Keymap: TATKeymap read FKeymap write FKeymap;
-    property MouseMap: TATMouseActions read FMouseActions write FMouseActions;
+    property MouseMap: TATEditorMouseActionArray read FMouseActions write FMouseActions;
     property TabHelper: TATStringTabHelper read FTabHelper;
     property WrapInfo: TATWrapInfo read FWrapInfo;
-    property ScrollVert: TATSynScrollInfo read FScrollVert write FScrollVert;
-    property ScrollHorz: TATSynScrollInfo read FScrollHorz write FScrollHorz;
+    property ScrollVert: TATEditorScrollInfo read FScrollVert write FScrollVert;
+    property ScrollHorz: TATEditorScrollInfo read FScrollHorz write FScrollHorz;
     //property BrotherEditor: TATSynEdit read FBrotherEditor write FBrotherEditor;
-    property CaretPropsNormal: TATCaretProps read FCaretPropsNormal;
-    property CaretPropsOverwrite: TATCaretProps read FCaretPropsOverwrite;
-    property CaretPropsReadonly: TATCaretProps read FCaretPropsReadonly;
+    property CaretShapeNormal: TATCaretShape read FCaretShapeNormal;
+    property CaretShapeOverwrite: TATCaretShape read FCaretShapeOverwrite;
+    property CaretShapeReadonly: TATCaretShape read FCaretShapeReadonly;
     //common
     property EncodingName: string read GetEncodingName write SetEncodingName;
     property Modified: boolean read GetModified write SetModified;
@@ -1294,12 +1373,14 @@ type
     property RedoCount: integer read GetRedoCount;
     property UndoAsString: string read GetUndoAsString write SetUndoAsString;
     property RedoAsString: string read GetRedoAsString write SetRedoAsString;
+    procedure ActionAddJumpToUndo;
     property Text: atString read GetText write SetText;
     property SelRect: TRect read FSelRect;
     function IsSelRectEmpty: boolean;
     function IsPosSelected(AX, AY: integer): boolean;
     function IsRangeSelected(AX1, AY1, AX2, AY2: integer): TATRangeSelection;
     function IsPosFolded(AX, AY: integer): boolean;
+    function IsPosInVisibleArea(AX, AY: integer): boolean;
     function IsLineFolded(ALine: integer; ADetectPartialFold: boolean = false): boolean;
     function IsCharWord(ch: Widechar): boolean;
     property TextCharSize: TPoint read FCharSize;
@@ -1309,11 +1390,12 @@ type
     property RectMinimap: TRect read FRectMinimap;
     property RectMicromap: TRect read FRectMicromap;
     property RectRuler: TRect read FRectRuler;
-    function IndentString: string;
+    function IndentString: UnicodeString;
     function RectMicromapMark(AColumn, ALineFrom, ALineTo: integer): TRect;
     //gutter
     property Gutter: TATGutter read FGutter;
     property GutterDecor: TATGutterDecor read GetGutterDecor;
+    property GutterDecorAlignment: TAlignment read FGutterDecorAlignment write FGutterDecorAlignment;
     property GutterBandBookmarks: integer read FGutterBandBookmarks write FGutterBandBookmarks;
     property GutterBandNumbers: integer read FGutterBandNumbers write FGutterBandNumbers;
     property GutterBandStates: integer read FGutterBandStates write FGutterBandStates;
@@ -1339,8 +1421,8 @@ type
     procedure DoCaretForceShow;
     function CaretPosToClientPos(P: TPoint): TPoint;
     function ClientPosToCaretPos(P: TPoint;
-      out ADetails: TATPosDetails;
-      AGapCoordAction: TATGapCoordAction=cGapCoordToLineEnd): TPoint;
+      out ADetails: TATEditorPosDetails;
+      AGapCoordAction: TATEditorGapCoordAction=cGapCoordToLineEnd): TPoint;
     function IsLineWithCaret(ALine: integer): boolean;
     //goto
     function DoShowPos(const APos: TPoint; AIndentHorz, AIndentVert: integer; AUnfold, AllowUpdate: boolean): boolean;
@@ -1381,7 +1463,9 @@ type
     procedure DoRangeHideLines(ALineFrom, ALineTo: integer); inline;
     procedure DoFoldForLevel(ALevel: integer);
     procedure DoFoldForLevelEx(ALevel: integer; AOuterRange: integer);
-    procedure DoFoldUnfoldRangeAtCurLine(AOp: TATFoldRangeCmd);
+    procedure DoFoldUnfoldRangeAtCurLine(AOp: TATEditorFoldRangeCommand);
+    property FoldingAsString: string read GetFoldingAsString write SetFoldingAsString;
+    property FoldingAsStringTodo: string read FFoldingAsStringTodo write FFoldingAsStringTodo;
     //markers
     procedure MarkerClearAll;
     procedure MarkerDrop;
@@ -1405,6 +1489,8 @@ type
     procedure DoCommand(ACmd: integer; const AText: atString = ''); virtual;
     procedure BeginUpdate;
     procedure EndUpdate;
+    procedure BeginEditing;
+    procedure EndEditing(ATextChanged: boolean);
     function IsLocked: boolean;
     function TextSelected: atString;
     function TextSelectedEx(ACaret: TATCaretItem): atString;
@@ -1527,6 +1613,7 @@ type
     property OnCheckInput: TATSynEditCheckInputEvent read FOnCheckInput write FOnCheckInput;
     property OnIdle: TNotifyEvent read FOnIdle write FOnIdle;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
+    property OnChangeLog: TATStringsChangeLogEvent read FOnChangeLog write FOnChangeLog;
     property OnChangeModified: TNotifyEvent read FOnChangeModified write FOnChangeModified;
     property OnChangeState: TNotifyEvent read FOnChangeState write FOnChangeState;
     property OnChangeCaretPos: TNotifyEvent read FOnChangeCaretPos write FOnChangeCaretPos;
@@ -1555,13 +1642,14 @@ type
     property CursorGutterNumbers: TCursor read FCursorGutterNumbers write FCursorGutterNumbers default crDefault;
     property CursorMinimap: TCursor read FCursorMinimap write FCursorMinimap default crDefault;
     property CursorMicromap: TCursor read FCursorMicromap write FCursorMicromap default crDefault;
-    property Colors: TATSynEditColors read FColors write FColors stored false;
+    property Colors: TATEditorColors read FColors write FColors stored false;
     property ImagesGutterDecor: TImageList read FGutterDecorImages write FGutterDecorImages;
     property WantTabs: boolean read FWantTabs write FWantTabs default true;
     property WantReturns: boolean read FWantReturns write FWantReturns default true;
 
     //options
-    property OptAutoCloseBrackets: string read FOptAutoCloseBrackets write FOptAutoCloseBrackets stored false;
+    property OptAutoPairForMultiCarets: boolean read FOptAutoPairForMultiCarets write FOptAutoPairForMultiCarets default cInitAutoPairForMultiCarets;
+    property OptAutoPairChars: string read FOptAutoPairChars write FOptAutoPairChars stored false;
     property OptAutocompleteAutoshowCharCount: integer read FOptAutocompleteAutoshowCharCount write FOptAutocompleteAutoshowCharCount default 0;
     property OptAutocompleteTriggerChars: string read FOptAutocompleteTriggerChars write FOptAutocompleteTriggerChars stored false;
     property OptAutocompleteCommitChars: string read FOptAutocompleteCommitChars write FOptAutocompleteCommitChars stored false;
@@ -1570,12 +1658,18 @@ type
     property OptAutocompleteUpDownAtEdge: integer read FOptAutocompleteUpDownAtEdge write FOptAutocompleteUpDownAtEdge default 1;
     property OptAutocompleteCommitIfSingleItem: boolean read FOptAutocompleteCommitIfSingleItem write FOptAutocompleteCommitIfSingleItem default false;
 
+    property OptInputNumberOnly: boolean read FOptInputNumberOnly write FOptInputNumberOnly default false;
+    property OptInputNumberAllowNegative: boolean read FOptInputNumberAllowNegative write FOptInputNumberAllowNegative default cInitInputNumberAllowNegative;
+    property OptMaskChar: WideChar read FOptMaskChar write FOptMaskChar default cInitMaskChar;
+    property OptMaskCharUsed: boolean read FOptMaskCharUsed write FOptMaskCharUsed default false;
+    property OptScrollAnimationSteps: integer read FOptScrollAnimationSteps write FOptScrollAnimationSteps default cInitScrollAnimationSteps;
+    property OptScrollAnimationSleep: integer read FOptScrollAnimationSleep write FOptScrollAnimationSleep default cInitScrollAnimationSleep;
     property OptScaleFont: integer read FOptScaleFont write FOptScaleFont default 0;
     property OptIdleInterval: integer read FOptIdleInterval write FOptIdleInterval default cInitIdleInterval;
     property OptTabSpaces: boolean read FOptTabSpaces write SetTabSpaces default false;
     property OptTabSize: integer read FTabSize write SetTabSize default cInitTabSize;
     property OptNonWordChars: atString read FOptNonWordChars write FOptNonWordChars stored false;
-    property OptFoldStyle: TATFoldStyle read FFoldStyle write FFoldStyle default cInitFoldStyle;
+    property OptFoldStyle: TATEditorFoldStyle read FFoldStyle write FFoldStyle default cInitFoldStyle;
     property OptFoldEnabled: boolean read FFoldEnabled write SetFoldEnabled default true;
     property OptFoldUnderlineOffset: integer read FFoldUnderlineOffset write FFoldUnderlineOffset default cInitFoldUnderlineOffset;
     property OptFoldTooltipVisible: boolean read FFoldTooltipVisible write FFoldTooltipVisible default cInitFoldTooltipVisible;
@@ -1589,7 +1683,7 @@ type
     property OptTextOffsetTop: integer read GetOptTextOffsetTop write FOptTextOffsetTop default 0;
     property OptTextOffsetFromLine: integer read FOptTextOffsetFromLine write FOptTextOffsetFromLine default cInitTextOffsetFromLine;
     property OptAutoIndent: boolean read FOptAutoIndent write FOptAutoIndent default true;
-    property OptAutoIndentKind: TATAutoIndentKind read FOptAutoIndentKind write FOptAutoIndentKind default cIndentAsPrevLine;
+    property OptAutoIndentKind: TATEditorAutoIndentKind read FOptAutoIndentKind write FOptAutoIndentKind default cIndentAsPrevLine;
     property OptAutoIndentBetterBracketsCurly: boolean read FOptAutoIndentBetterBracketsCurly write FOptAutoIndentBetterBracketsCurly default true;
     property OptAutoIndentBetterBracketsRound: boolean read FOptAutoIndentBetterBracketsRound write FOptAutoIndentBetterBracketsRound default false;
     property OptAutoIndentBetterBracketsSquare: boolean read FOptAutoIndentBetterBracketsSquare write FOptAutoIndentBetterBracketsSquare default false;
@@ -1600,13 +1694,11 @@ type
     property OptLastLineOnTop: boolean read FOptLastLineOnTop write FOptLastLineOnTop default false;
     property OptOverwriteSel: boolean read FOptOverwriteSel write FOptOverwriteSel default true;
     property OptOverwriteAllowedOnPaste: boolean read FOptOverwriteAllowedOnPaste write FOptOverwriteAllowedOnPaste default false;
-    property OptScrollStyleHorz: TATSynEditScrollStyle read FOptScrollStyleHorz write FOptScrollStyleHorz default aessAuto;
-    property OptScrollStyleVert: TATSynEditScrollStyle read FOptScrollStyleVert write FOptScrollStyleVert default aessShow;
+    property OptScrollStyleHorz: TATEditorScrollbarStyle read FOptScrollStyleHorz write FOptScrollStyleHorz default aessAuto;
+    property OptScrollStyleVert: TATEditorScrollbarStyle read FOptScrollStyleVert write FOptScrollStyleVert default aessShow;
     property OptScrollSmooth: boolean read FOptScrollSmooth write FOptScrollSmooth default true;
     property OptScrollIndentCaretHorz: integer read FOptScrollIndentCaretHorz write FOptScrollIndentCaretHorz default 10;
     property OptScrollIndentCaretVert: integer read FOptScrollIndentCaretVert write FOptScrollIndentCaretVert default 0;
-    property OptUndoIndentVert: integer read FOptUndoIndentVert write FOptUndoIndentVert default cInitUndoIndentVert;
-    property OptUndoIndentHorz: integer read FOptUndoIndentHorz write FOptUndoIndentHorz default cInitUndoIndentHorz;
     property OptScrollbarsNew: boolean read FOptScrollbarsNew write FOptScrollbarsNew default false;
     property OptScrollbarHorizontalAddSpace: integer read FOptScrollbarHorizontalAddSpace write FOptScrollbarHorizontalAddSpace default cInitScrollbarHorzAddSpace;
     property OptScrollLineCommandsKeepCaretOnScreen: boolean read FOptScrollLineCommandsKeepCaretOnScreen write FOptScrollLineCommandsKeepCaretOnScreen default true;
@@ -1624,8 +1716,8 @@ type
     property OptStapleWidthPercent: integer read FOptStapleWidthPercent write FOptStapleWidthPercent default 100;
     property OptStapleHiliteActive: boolean read FOptStapleHiliteActive write FOptStapleHiliteActive default true;
     property OptStapleHiliteActiveAlpha: integer read FOptStapleHiliteActiveAlpha write FOptStapleHiliteActiveAlpha default cInitStapleHiliteAlpha;
-    property OptStapleEdge1: TATStapleEdge read FOptStapleEdge1 write FOptStapleEdge1 default cStapleEdgeAngle;
-    property OptStapleEdge2: TATStapleEdge read FOptStapleEdge2 write FOptStapleEdge2 default cStapleEdgeAngle;
+    property OptStapleEdge1: TATEditorStapleEdge read FOptStapleEdge1 write FOptStapleEdge1 default cStapleEdgeAngle;
+    property OptStapleEdge2: TATEditorStapleEdge read FOptStapleEdge2 write FOptStapleEdge2 default cStapleEdgeAngle;
     property OptStapleIndentConsidersEnd: boolean read FOptStapleIndentConsidersEnd write FOptStapleIndentConsidersEnd default false;
     property OptShowFullWidthForSelection: boolean read FOptShowFullSel write FOptShowFullSel default false;
     property OptShowFullWidthForSyntaxHilite: boolean read FOptShowFullHilite write FOptShowFullHilite default true;
@@ -1642,7 +1734,7 @@ type
     property OptCaretStopUnfocused: boolean read FCaretStopUnfocused write FCaretStopUnfocused default true;
     property OptCaretHideUnfocused: boolean read FCaretHideUnfocused write FCaretHideUnfocused default true;
     property OptCaretPreferLeftSide: boolean read FOptCaretPreferLeftSide write FOptCaretPreferLeftSide default true;
-    property OptCaretPosAfterPasteColumn: TATPasteCaret read FOptCaretPosAfterPasteColumn write FOptCaretPosAfterPasteColumn default cPasteCaretColumnRight;
+    property OptCaretPosAfterPasteColumn: TATEditorPasteCaret read FOptCaretPosAfterPasteColumn write FOptCaretPosAfterPasteColumn default cPasteCaretColumnRight;
     property OptCaretsPrimitiveColumnSelection: boolean read FOptCaretsPrimitiveColumnSelection write FOptCaretsPrimitiveColumnSelection default cInitCaretsPrimitiveColumnSelection;
     property OptCaretsAddedToColumnSelection: boolean read FOptCaretsAddedToColumnSelection write FOptCaretsAddedToColumnSelection default true;
     property OptCaretFixAfterRangeFolded: boolean read FOptCaretFixAfterRangeFolded write FOptCaretFixAfterRangeFolded default true;
@@ -1654,17 +1746,19 @@ type
     property OptGutterShowFoldLines: boolean read FOptGutterShowFoldLines write FOptGutterShowFoldLines default true;
     property OptGutterShowFoldLinesAll: boolean read FOptGutterShowFoldLinesAll write FOptGutterShowFoldLinesAll default false;
     property OptGutterShowFoldLinesForCaret: boolean read FOptGutterShowFoldLinesForCaret write FOptGutterShowFoldLinesForCaret default true;
-    property OptGutterIcons: TATGutterIconsKind read FOptGutterIcons write FOptGutterIcons default cGutterIconsPlusMinus;
-    property OptBorderWidth: integer read FOptBorderWidth write FOptBorderWidth default 0;
-    property OptBorderWidthFocused: integer read FOptBorderWidthFocused write FOptBorderWidthFocused default 0;
+    property OptGutterIcons: TATEditorGutterIcons read FOptGutterIcons write FOptGutterIcons default cGutterIconsPlusMinus;
+    property OptBorderVisible: boolean read FOptBorderVisible write FOptBorderVisible default cInitBorderVisible;
+    property OptBorderWidth: integer read FOptBorderWidth write FOptBorderWidth default cInitBorderWidth;
+    property OptBorderWidthFocused: integer read FOptBorderWidthFocused write FOptBorderWidthFocused default cInitBorderWidthFocused;
     property OptBorderFocusedActive: boolean read FOptBorderFocusedActive write FOptBorderFocusedActive default false;
     property OptRulerVisible: boolean read FOptRulerVisible write FOptRulerVisible default true;
-    property OptRulerNumeration: TATRulerNumeration read FOptRulerNumeration write FOptRulerNumeration default cRulerNumeration_0_10_20;
+    property OptRulerNumeration: TATEditorRulerNumeration read FOptRulerNumeration write FOptRulerNumeration default cInitRulerNumeration;
     property OptRulerHeightPercents: integer read FOptRulerHeightPercents write FOptRulerHeightPercents default cSizeRulerHeightPercents;
     property OptRulerFontSizePercents: integer read FOptRulerFontSizePercents write FOptRulerFontSizePercents default 80;
     property OptRulerMarkSizeCaret: integer read FOptRulerMarkSizeCaret write FOptRulerMarkSizeCaret default cSizeRulerMarkCaret;
     property OptRulerMarkSizeSmall: integer read FOptRulerMarkSizeSmall write FOptRulerMarkSizeSmall default cSizeRulerMarkSmall;
     property OptRulerMarkSizeBig: integer read FOptRulerMarkSizeBig write FOptRulerMarkSizeBig default cSizeRulerMarkBig;
+    property OptRulerMarkForAllCarets: boolean read FOptRulerMarkForAllCarets write FOptRulerMarkForAllCarets default false;
     property OptRulerTopIndentPercents: integer read FOptRulerTopIndentPercents write FOptRulerTopIndentPercents default 0;
     property OptMinimapCustomScale: integer read FMinimapCustomScale write FMinimapCustomScale default 0;
     property OptMinimapVisible: boolean read FMinimapVisible write SetMinimapVisible default cInitMinimapVisible;
@@ -1676,11 +1770,11 @@ type
     property OptMinimapTooltipVisible: boolean read FMinimapTooltipVisible write FMinimapTooltipVisible default cInitMinimapTooltipVisible;
     property OptMinimapTooltipLinesCount: integer read FMinimapTooltipLinesCount write FMinimapTooltipLinesCount default cInitMinimapTooltipLinesCount;
     property OptMinimapTooltipWidthPercents: integer read FMinimapTooltipWidthPercents write FMinimapTooltipWidthPercents default cInitMinimapTooltipWidthPercents;
-    property OptMinimapCachedPainting: boolean read FMinimapCachedPainting write FMinimapCachedPainting default true;
     property OptMinimapHiliteLinesWithSelection: boolean read FMinimapHiliteLinesWithSelection write FMinimapHiliteLinesWithSelection default true;
     property OptMicromapVisible: boolean read FMicromapVisible write SetMicromapVisible default cInitMicromapVisible;
+    property OptMicromapShowForMinCount: integer read FMicromapShowForMinCount write FMicromapShowForMinCount default cInitMicromapShowForMinCount;
     property OptCharSpacingY: integer read GetCharSpacingY write SetCharSpacingY default cInitSpacingText;
-    property OptWrapMode: TATSynWrapMode read FWrapMode write SetWrapMode default cInitWrapMode;
+    property OptWrapMode: TATEditorWrapMode read FWrapMode write SetWrapMode default cInitWrapMode;
     property OptWrapIndented: boolean read FWrapIndented write SetWrapIndented default true;
     property OptWrapAddSpace: integer read FWrapAddSpace write FWrapAddSpace default 1;
     property OptWrapEnabledForMaxLines: integer read FWrapEnabledForMaxLines write FWrapEnabledForMaxLines default cInitWrapEnabledForMaxLines;
@@ -1688,10 +1782,9 @@ type
     property OptMarginString: string read GetMarginString write SetMarginString;
     property OptNumbersAutosize: boolean read FOptNumbersAutosize write FOptNumbersAutosize default true;
     property OptNumbersAlignment: TAlignment read FOptNumbersAlignment write FOptNumbersAlignment default taRightJustify;
-    property OptNumbersStyle: TATSynNumbersStyle read FOptNumbersStyle write FOptNumbersStyle default cInitNumbersStyle;
+    property OptNumbersStyle: TATEditorNumbersStyle read FOptNumbersStyle write FOptNumbersStyle default cInitNumbersStyle;
     property OptNumbersShowFirst: boolean read FOptNumbersShowFirst write FOptNumbersShowFirst default true;
     property OptNumbersShowCarets: boolean read FOptNumbersShowCarets write FOptNumbersShowCarets default false;
-    property OptNumbersSkippedChar: string read FOptNumbersSkippedChar write FOptNumbersSkippedChar;
     property OptNumbersIndentPercents: integer read FOptNumbersIndentPercents write FOptNumbersIndentPercents default cInitNumbersIndentPercents;
     property OptUnprintedVisible: boolean read FUnprintedVisible write FUnprintedVisible default true;
     property OptUnprintedSpaces: boolean read FUnprintedSpaces write FUnprintedSpaces default true;
@@ -1708,14 +1801,14 @@ type
     property OptMouseClickOpensURL: boolean read FOptMouseClickOpensURL write FOptMouseClickOpensURL default false;
     property OptMouseClickNumberSelectsLine: boolean read FOptMouseClickNumberSelectsLine write FOptMouseClickNumberSelectsLine default true;
     property OptMouseClickNumberSelectsLineWithEOL: boolean read FOptMouseClickNumberSelectsLineWithEOL write FOptMouseClickNumberSelectsLineWithEOL default true;
-    property OptMouse2ClickAction: TATMouseDoubleClickAction read FOptMouse2ClickAction write FOptMouse2ClickAction default cMouseDblClickSelectAnyChars;
+    property OptMouse2ClickAction: TATEditorDoubleClickAction read FOptMouse2ClickAction write FOptMouse2ClickAction default cMouseDblClickSelectAnyChars;
     property OptMouse2ClickOpensURL: boolean read FOptMouse2ClickOpensURL write FOptMouse2ClickOpensURL default true;
     property OptMouse2ClickDragSelectsWords: boolean read FOptMouse2ClickDragSelectsWords write FOptMouse2ClickDragSelectsWords default true;
     property OptMouse3ClickSelectsLine: boolean read FOptMouse3ClickSelectsLine write FOptMouse3ClickSelectsLine default true;
     property OptMouseDragDrop: boolean read FOptMouseDragDrop write FOptMouseDragDrop default true;
     property OptMouseDragDropCopying: boolean read FOptMouseDragDropCopying write FOptMouseDragDropCopying default true;
     property OptMouseDragDropCopyingWithState: TShiftStateEnum read FOptMouseDragDropCopyingWithState write FOptMouseDragDropCopyingWithState default ssModifier;
-    property OptMouseMiddleClickAction: TATMiddleClickAction read FOptMouseMiddleClickAction write FOptMouseMiddleClickAction default mcaScrolling;
+    property OptMouseMiddleClickAction: TATEditorMiddleClickAction read FOptMouseMiddleClickAction write FOptMouseMiddleClickAction default mcaScrolling;
     property OptMouseRightClickMovesCaret: boolean read FOptMouseRightClickMovesCaret write FOptMouseRightClickMovesCaret default false;
     property OptMouseWheelScrollVert: boolean read FOptMouseWheelScrollVert write FOptMouseWheelScrollVert default true;
     property OptMouseWheelScrollVertSpeed: integer read FOptMouseWheelScrollVertSpeed write FOptMouseWheelScrollVertSpeed default 3;
@@ -1729,9 +1822,10 @@ type
     property OptKeyBackspaceGoesToPrevLine: boolean read FOptKeyBackspaceGoesToPrevLine write FOptKeyBackspaceGoesToPrevLine default true;
     property OptKeyPageKeepsRelativePos: boolean read FOptKeyPageKeepsRelativePos write FOptKeyPageKeepsRelativePos default true;
     property OptKeyUpDownNavigateWrapped: boolean read FOptKeyUpDownNavigateWrapped write FOptKeyUpDownNavigateWrapped default true;
+    property OptKeyUpDownAllowToEdge: boolean read FOptKeyUpDownAllowToEdge write FOptKeyUpDownAllowToEdge default false;
     property OptKeyUpDownKeepColumn: boolean read FOptKeyUpDownKeepColumn write FOptKeyUpDownKeepColumn default true;
     property OptKeyHomeEndNavigateWrapped: boolean read FOptKeyHomeEndNavigateWrapped write FOptKeyHomeEndNavigateWrapped default true;
-    property OptKeyPageUpDownSize: TATPageUpDownSize read FOptKeyPageUpDownSize write FOptKeyPageUpDownSize default cPageSizeFullMinus1;
+    property OptKeyPageUpDownSize: TATEditorPageDownSize read FOptKeyPageUpDownSize write FOptKeyPageUpDownSize default cPageSizeFullMinus1;
     property OptKeyLeftRightGoToNextLineWithCarets: boolean read FOptKeyLeftRightGoToNextLineWithCarets write FOptKeyLeftRightGoToNextLineWithCarets default true;
     property OptKeyLeftRightSwapSel: boolean read FOptKeyLeftRightSwapSel write FOptKeyLeftRightSwapSel default true;
     property OptKeyLeftRightSwapSelAndSelect: boolean read FOptKeyLeftRightSwapSelAndSelect write FOptKeyLeftRightSwapSelAndSelect default false;
@@ -1753,6 +1847,12 @@ type
     property OptUndoGrouped: boolean read FOptUndoGrouped write FOptUndoGrouped default true;
     property OptUndoAfterSave: boolean read GetUndoAfterSave write SetUndoAfterSave default true;
     property OptUndoMaxCarets: integer read FOptUndoMaxCarets write FOptUndoMaxCarets default cInitUndoMaxCarets;
+    property OptUndoIndentVert: integer read FOptUndoIndentVert write FOptUndoIndentVert default cInitUndoIndentVert;
+    property OptUndoIndentHorz: integer read FOptUndoIndentHorz write FOptUndoIndentHorz default cInitUndoIndentHorz;
+    property OptUndoPause: integer read FOptUndoPause write FOptUndoPause default cInitUndoPause;
+    property OptUndoPause2: integer read FOptUndoPause2 write FOptUndoPause2 default cInitUndoPause2;
+    property OptUndoPauseHighlightLine: boolean read FOptUndoPauseHighlightLine write FOptUndoPauseHighlightLine default cInitUndoPauseHighlightLine;
+    property OptUndoForCaretJump: boolean read FOptUndoForCaretJump write FOptUndoForCaretJump default cInitUndoForCaretJump;
     property OptSavingForceFinalEol: boolean read FOptSavingForceFinalEol write FOptSavingForceFinalEol default false;
     property OptSavingTrimSpaces: boolean read FOptSavingTrimSpaces write FOptSavingTrimSpaces default false;
     property OptSavingTrimFinalEmptyLines: boolean read FOptSavingTrimFinalEmptyLines write FOptSavingTrimFinalEmptyLines default false;
@@ -1761,6 +1861,7 @@ type
     property OptZebraActive: boolean read FOptZebraActive write FOptZebraActive default false;
     property OptZebraStep: integer read FOptZebraStep write FOptZebraStep default 2;
     property OptZebraAlphaBlend: byte read FOptZebraAlphaBlend write FOptZebraAlphaBlend default cInitZebraAlphaBlend;
+    property OptDimUnfocusedBack: integer read FOptDimUnfocusedBack write FOptDimUnfocusedBack default cInitDimUnfocusedBack;
   end;
 
 var
@@ -1795,9 +1896,27 @@ uses
 
 {$I atsynedit_proc.inc}
 
+{ TATMinimapThread }
+
+procedure TATMinimapThread.Execute;
+var
+  Ed: TATSynEdit;
+begin
+  Ed:= TATSynEdit(Editor);
+  repeat
+    if Terminated then exit;
+    if Ed.FEventMapStart.WaitFor(1000)=wrSignaled then
+    begin
+      Ed.FEventMapStart.ResetEvent;
+      Ed.DoPaintMinimapAllToBGRABitmap;
+      Ed.FEventMapDone.SetEvent;
+    end;
+  until false;
+end;
+
 { TATSynEdit }
 
-procedure TATSynEdit.DoPaintRulerTo(C: TCanvas);
+procedure TATSynEdit.DoPaintRuler(C: TCanvas);
 var
   NX, NPrevFontSize, NRulerStart, NOutput,
   NTopIndent, NMarkHeight, i: integer;
@@ -1820,7 +1939,7 @@ begin
 
   NCharW:= FCharSize.X * FOptRulerFontSizePercents div 100;
 
-  for i:= NRulerStart to NRulerStart+GetVisibleColumns+1 do
+  for i:= NRulerStart to NRulerStart+FVisibleColumns+1 do
   begin
     case FOptRulerNumeration of
       cRulerNumeration_0_10_20:
@@ -1871,9 +1990,25 @@ begin
   if (ACaretX>=FRectRuler.Left) and (ACaretX<FRectRuler.Right) then
     CanvasPaintTriangleDown(C,
       Colors.RulerFont,
-      Point(ACaretX, FRectRuler.Top+FOptRulerMarkSizeCaret),
+      Point(ACaretX, FRectRuler.Top+EditorScale(FOptRulerMarkSizeCaret)),
       EditorScale(FOptRulerMarkSizeCaret)
       );
+end;
+
+procedure TATSynEdit.DoPaintRulerCaretMarks(C: TCanvas);
+var
+  NCount, i: integer;
+begin
+  if FOptRulerVisible and (FOptRulerMarkSizeCaret>0) then
+  begin
+    if FOptRulerMarkForAllCarets then
+      NCount:= Carets.Count
+    else
+      NCount:= 1;
+
+    for i:= 0 to NCount-1 do
+      DoPaintRulerCaretMark(C, Carets[i].CoordX);
+  end;
 end;
 
 procedure TATSynEdit.UpdateGutterAutosize;
@@ -1940,7 +2075,7 @@ begin
     cNumbersAll:
       Result:= IntToStr(N);
     cNumbersNone:
-      Result:= FOptNumbersSkippedChar;
+      Result:= '.';
     cNumbersEach10th:
       begin
         if (N mod 10 = 0) then
@@ -1949,14 +2084,14 @@ begin
         if (N mod 5) = 0 then
           Result:= '-'
         else
-          Result:= FOptNumbersSkippedChar;
+          Result:= '.';
       end;
     cNumbersEach5th:
       begin
         if (N mod 5 = 0) then
           Result:= IntToStr(N)
         else
-          Result:= FOptNumbersSkippedChar;
+          Result:= '.';
       end;
   end;
 end;
@@ -2032,25 +2167,23 @@ begin
     FWrapUpdateNeeded:= true
   else
   if (not FWrapUpdateNeeded) and
-    (FWrapMode=cWrapOn) and
-    (FPrevVisibleColumns<>NNewVisibleColumns) then
+    (FWrapMode<>cWrapOff) and
+    (FWrapInfo.VisibleColumns<>NNewVisibleColumns) then
     FWrapUpdateNeeded:= true;
 
   if not FWrapUpdateNeeded then Exit;
   FWrapUpdateNeeded:= false;
-  FPrevVisibleColumns:= NNewVisibleColumns;
-
-  InvalidateHilitingCache;
+  FWrapInfo.VisibleColumns:= NNewVisibleColumns;
 
   case FWrapMode of
     cWrapOff:
-      FWrapColumn:= 0;
+      FWrapInfo.WrapColumn:= 0;
     cWrapOn:
-      FWrapColumn:= Max(cMinWrapColumn, NNewVisibleColumns-FWrapAddSpace);
+      FWrapInfo.WrapColumn:= Max(cMinWrapColumn, NNewVisibleColumns-FWrapAddSpace);
     cWrapAtMargin:
-      FWrapColumn:= Max(cMinWrapColumn, FMarginRight);
+      FWrapInfo.WrapColumn:= Max(cMinWrapColumn, FMarginRight);
     cWrapAtWindowOrMargin:
-      FWrapColumn:= Max(cMinWrapColumn, Min(NNewVisibleColumns-FWrapAddSpace, FMarginRight));
+      FWrapInfo.WrapColumn:= Max(cMinWrapColumn, Min(NNewVisibleColumns-FWrapAddSpace, FMarginRight));
   end;
 
   UseCachedUpdate:=
@@ -2216,7 +2349,7 @@ begin
     Strings,
     FTabHelper,
     FEditorIndex,
-    FWrapColumn,
+    FWrapInfo.WrapColumn,
     FWrapIndented,
     GetVisibleColumns,
     FOptNonWordChars,
@@ -2227,17 +2360,17 @@ begin
 end;
 
 
-function TATSynEdit.GetVisibleLines: integer; inline;
+function TATSynEdit.GetVisibleLines: integer;
 begin
   Result:= FRectMainVisible.Height div FCharSize.Y;
 end;
 
-function TATSynEdit.GetVisibleColumns: integer; inline;
+function TATSynEdit.GetVisibleColumns: integer;
 begin
   Result:= FRectMainVisible.Width div FCharSize.X;
 end;
 
-function TATSynEdit.GetVisibleLinesMinimap: integer; inline;
+function TATSynEdit.GetVisibleLinesMinimap: integer;
 begin
   Result:= FRectMinimap.Height div FCharSizeMinimap.Y - 1;
 end;
@@ -2272,7 +2405,7 @@ begin
   Update(true);
 end;
 
-procedure TATSynEdit.SetWrapMode(AValue: TATSynWrapMode);
+procedure TATSynEdit.SetWrapMode(AValue: TATEditorWrapMode);
 var
   NLine: integer;
   Caret: TATCaretItem;
@@ -2329,6 +2462,13 @@ var
 begin
   Result:= false;
 
+  if ModeOneLine then
+  begin
+    FScrollbarVert.Hide;
+    FScrollbarHorz.Hide;
+    exit;
+  end;
+
   NGapAll:= 0;
   NGapPos:= 0;
 
@@ -2366,7 +2506,7 @@ begin
   with FScrollHorz do
   begin
     NPage:= Max(1, GetVisibleColumns);
-    //NMax is calculated in DoPaintTextTo
+    //NMax is calculated in DoPaintText
     //hide horz bar for word-wrap:
     if FWrapMode=cWrapOn then
       NMax:= NPage;
@@ -2652,26 +2792,39 @@ begin
   GetRectRuler(FRectRuler); //after main
 end;
 
-procedure TATSynEdit.DoPaintMainTo(C: TCanvas; ALineFrom: integer);
+procedure TATSynEdit.DoPaintMain(C: TCanvas; ALineFrom: integer);
 begin
-  if csLoading in ComponentState then Exit;
-
-  UpdateInitialVars(C);
-
   C.Brush.Color:= FColorBG;
-  C.FillRect(ClientRect); //avoid FClientW here to fill entire area
+  C.FillRect(0, 0, Width, Height); //avoid FClientW here to fill entire area
 
-  UpdateAdapterCacheSize;
-  UpdateWrapInfo;
+  UpdateWrapInfo; //update WrapInfo before MinimapThread start
+
+  if FMinimapVisible then
+  begin
+    {$ifdef map_th}
+    if not Assigned(FMinimapThread) then
+    begin
+      FEventMapStart:= TSimpleEvent.Create;
+      FEventMapDone:= TSimpleEvent.Create;
+      FMinimapThread:= TATMinimapThread.Create(true);
+      FMinimapThread.FreeOnTerminate:= false;
+      FMinimapThread.Editor:= Self;
+      FMinimapThread.Start;
+    end;
+    FEventMapStart.SetEvent;
+    {$else}
+    DoPaintMinimapAllToBGRABitmap;
+    {$endif}
+  end;
 
   UpdateLinksAttribs;
-  DoPaintTextTo(C, FRectMain, FCharSize, FOptGutterVisible, true, FScrollHorz, FScrollVert, ALineFrom);
-  DoPaintMarginsTo(C);
+  DoPaintText(C, FRectMain, FCharSize, FOptGutterVisible, FScrollHorz, FScrollVert, ALineFrom);
+  DoPaintMargins(C);
   DoPaintNiceScroll(C);
 
   if FOptRulerVisible then
   begin
-    DoPaintRulerTo(C);
+    DoPaintRuler(C);
     if Assigned(FOnDrawRuler) then
       FOnDrawRuler(Self, C, FRectRuler);
   end;
@@ -2679,19 +2832,34 @@ begin
   if Assigned(FOnDrawEditor) then
     FOnDrawEditor(Self, C, FRectMain);
 
-  if FMinimapVisible then
-    DoPaintMinimapTo(C);
   if FMicromapVisible then
-    DoPaintMicromapTo(C);
+    DoPaintMicromap(C);
 
-  if FOptBorderFocusedActive and FIsEntered then
+  if FOptBorderFocusedActive and FIsEntered and (FOptBorderWidthFocused>0) then
     DoPaintBorder(C, Colors.BorderLineFocused, FOptBorderWidthFocused)
   else
+  if FOptBorderVisible and (FOptBorderWidth>0) then
     DoPaintBorder(C, Colors.BorderLine, FOptBorderWidth);
 
   if FOptShowMouseSelFrame then
     if FMouseDragCoord.X>=0 then
       DoPaintMouseSelFrame(C);
+
+  if FMinimapVisible then
+  begin
+    if FMinimapTooltipVisible and FMinimapTooltipEnabled then
+      DoPaintMinimapTooltip(C);
+
+    {$ifdef map_th}
+    if FEventMapDone.WaitFor(1000)=wrSignaled then
+    begin
+      FEventMapDone.ResetEvent;
+      FMinimapBmp.Draw(C, FRectMinimap.Left, FRectMinimap.Top);
+    end;
+    {$else}
+    FMinimapBmp.Draw(C, FRectMinimap.Left, FRectMinimap.Top);
+    {$endif}
+  end;
 end;
 
 procedure TATSynEdit.DoPaintMouseSelFrame(C: TCanvas);
@@ -2775,90 +2943,43 @@ begin
   end;
 end;
 
-procedure TATSynEdit.DoPaintTextTo(C: TCanvas;
+{
+type
+  PATEditorPaintingItemProp = ^TATEditorPaintingItemProp;
+  TATEditorPaintingItemProp = record
+    LineRect: TRect;
+    WrapIndex: integer;
+  end;
+}
+
+procedure TATSynEdit.DoPaintText(C: TCanvas;
   const ARect: TRect;
   const ACharSize: TPoint;
-  AWithGutter, AMainText: boolean;
-  var AScrollHorz, AScrollVert: TATSynScrollInfo;
+  AWithGutter: boolean;
+  var AScrollHorz, AScrollVert: TATEditorScrollInfo;
   ALineFrom: integer);
 var
-  NCoordTop, NCoordSep: integer;
-  //
-  procedure FillOneLine(AFillColor: TColor; ARectLeft: integer);
-  begin
-    {$ifdef use_bg}
-    if AMainText then
-    begin
-      C.Brush.Color:= AFillColor;
-      C.FillRect(ARectLeft, NCoordTop, ARect.Right, NCoordTop+ACharSize.Y);
-    end
-    else
-      FFastBmp.FillRect(
-        ARectLeft - FRectMinimap.Left,
-        NCoordTop - FRectMinimap.Top,
-        FRectMinimap.Width,
-        NCoordTop - FRectMinimap.Top + ACharSize.Y,
-        AFillColor);
-    {$else}
-    C.Brush.Color:= AFillColor;
-    C.FillRect(ARectLeft, NCoordTop, ARect.Right, NCoordTop+ACharSize.Y);
-    {$endif}
-  end;
-  //
-var
-  NWrapIndex, NWrapIndexDummy, NLinesIndex, NLineLen, NCount: integer;
-  NOutputCharsSkipped, NOutputCellPercentsSkipped: integer;
-  NOutputStrWidth, NOutputMaximalChars: integer;
-  WrapItem: TATWrapItem;
+  RectLine: TRect;
   GapItem: TATGapItem;
-  Band: TATGutterItem;
-  StringItem: PATStringItem;
-  NColorEntire, NColorAfter: TColor;
-  NColorOfStates: array[TATLineState] of TColor;
-  NDimValue, NBandDecor: integer;
-  StrOutput: atString;
-  CurrPoint, CurrPointText, CoordAfterText: TPoint;
-  LineSeparator: TATLineSeparator;
-  LineState: TATLineState;
-  bLineWithCaret, bLineEolSelected, bLineColorForced, bLineHuge: boolean;
-  Event: TATSynEditDrawLineEvent;
-  TextOutProps: TATCanvasTextOutProps;
-  bCachedMinimap, bUseColorOfCurrentLine: boolean;
-  bHiliteLinesWithSelection: boolean;
-  bUseSetPixel: boolean;
-  NSubPos, NSubLen: integer;
-  bTrimmedNonSpaces: boolean;
+  NWrapIndex, NWrapIndexDummy, NLineCount: integer;
 begin
-  bHiliteLinesWithSelection:= not AMainText and FMinimapHiliteLinesWithSelection;
-  bUseSetPixel:=
-    {$ifndef windows} DoubleBuffered and {$endif}
-    (ACharSize.X=1);
-
-  NColorOfStates[cLineStateNone]:= -1;
-  NColorOfStates[cLineStateChanged]:= Colors.StateChanged;
-  NColorOfStates[cLineStateAdded]:= Colors.StateAdded;
-  NColorOfStates[cLineStateSaved]:= Colors.StateSaved;
-
   //wrap turned off can cause bad scrollpos, fix it
   with AScrollVert do
     NPos:= Min(NPos, NPosLast);
 
-  {$ifdef use_bg}
-  if AMainText then
-  {$endif}
-  begin
-    C.Brush.Color:= FColorBG;
-    C.FillRect(ARect);
-  end;
+  C.Brush.Color:= FColorBG;
+  C.FillRect(ARect);
 
-  if AMainText then
-  begin
-    if Assigned(FFoldedMarkList) then
-      FFoldedMarkList.Clear;
-  end;
+  if Assigned(FFoldedMarkList) then
+    FFoldedMarkList.Clear;
 
   if AWithGutter then
   begin
+    FColorOfStates[cLineStateNone]:= -1;
+    FColorOfStates[cLineStateChanged]:= Colors.StateChanged;
+    FColorOfStates[cLineStateAdded]:= Colors.StateAdded;
+    FColorOfStates[cLineStateSaved]:= Colors.StateSaved;
+
     C.Brush.Color:= Colors.GutterBG;
     C.FillRect(FRectGutter);
 
@@ -2871,10 +2992,10 @@ begin
       DoPaintGutterBandBG(C, FGutterBandEmpty, FColorBG, -1, -1, true);
   end;
 
-  if AMainText and (FTextHint<>'') then
+  if (FTextHint<>'') then
   begin
-    NCount:= Strings.Count;
-    if (NCount=0) or ((NCount=1) and (Strings.LinesLen[0]=0)) then
+    NLineCount:= Strings.Count;
+    if (NLineCount=0) or ((NLineCount=1) and (Strings.LinesLen[0]=0)) then
     begin
       DoPaintTextHintTo(C);
       Exit
@@ -2885,12 +3006,11 @@ begin
   AScrollHorz.NMax:= 1;
   {$endif}
 
-  NCoordTop:= ARect.Top;
-
   if ALineFrom>=0 then
   begin
     FWrapInfo.FindIndexesOfLineNumber(ALineFrom, NWrapIndex, NWrapIndexDummy);
-    AScrollVert.NPos:= NWrapIndex;
+    DoScroll_SetPos(AScrollVert, NWrapIndex);
+      //last param True, to continue scrolling after resize
   end
   else
   begin
@@ -2899,574 +3019,723 @@ begin
 
   DoEventBeforeCalcHilite;
 
-  bCachedMinimap:=
-    not AMainText and
-    FMinimapCachedPainting and
-    Assigned(FAdapterHilite) and
-    not TempSel_IsMultiline;
+  RectLine.Left:= ARect.Left;
+  RectLine.Right:= ARect.Right;
+  RectLine.Top:= 0;
+  RectLine.Bottom:= ARect.Top;
 
   repeat
-    if NCoordTop>ARect.Bottom then Break;
+    RectLine.Top:= RectLine.Bottom;
+    RectLine.Bottom:= RectLine.Top+ACharSize.Y;
+    if RectLine.Top>ARect.Bottom then Break;
 
     if not FWrapInfo.IsIndexValid(NWrapIndex) then
     begin
       //paint end-of-file arrow
-      if AMainText then
-        if NWrapIndex>=0 then
-          if OptUnprintedVisible and OptUnprintedEof then
-            if OptUnprintedEndsDetails then
-              DoPaintUnprintedEolText(C,
-                'EOF',
-                ARect.Left,
-                NCoordTop,
-                Colors.UnprintedFont,
-                Colors.UnprintedBG)
-            else
-              CanvasArrowHorz(C,
-                Rect(ARect.Left, NCoordTop, ARect.Right, NCoordTop+ACharSize.Y),
-                Colors.UnprintedFont, OptUnprintedEofCharLength*ACharSize.X,
-                false,
-                OptUnprintedTabPointerScale);
-      Break;
-    end;
-
-    WrapItem:= FWrapInfo[NWrapIndex];
-    NLinesIndex:= WrapItem.NLineIndex;
-    if not Strings.IsIndexValid(NLinesIndex) then Break;
-
-    //support Gap before the 1st line
-    if AMainText then
-      if (NWrapIndex=0) and AScrollVert.TopGapVisible and (Gaps.SizeOfGapTop>0) then
-      begin
-        GapItem:= Gaps.Find(-1);
-        if Assigned(GapItem) then
-        begin
-          DoPaintGapTo(C, Rect(ARect.Left, NCoordTop, ARect.Right, NCoordTop+GapItem.Size), GapItem);
-          NCoordTop+= GapItem.Size;
-        end;
-      end;
-
-    {$ifdef atsynedit_cache}
-    //speedup painting minimap:
-    //if line parts cached, paint them now
-    NColorAfter:= clNone;
-    if bCachedMinimap then
-      if (WrapItem.NLength>0) and
-        FAdapterCache.Get(WrapItem.NLineIndex, WrapItem.NCharIndex, FLineParts, NColorAfter) then
-        begin
-          DoCalcLineEntireColor(
-            WrapItem.NLineIndex,
-            false,
-            NColorEntire,
-            bLineColorForced,
-            bHiliteLinesWithSelection);
-
-          DoPartSetColorBG(FLineParts, NColorEntire, bLineColorForced);
-          if bLineColorForced then
-            NColorAfter:= NColorEntire;
-
-          if NColorAfter<>clNone then
-            FillOneLine(NColorAfter, ARect.Left);
-
-          CurrPointText:= Point(
-            Int64(ARect.Left) + (Int64(WrapItem.NIndent)-AScrollHorz.NPos)*ACharSize.X,
-            NCoordTop);
-
-          CanvasTextOutMinimap(
-            {$ifdef use_bg} FFastBmp, {$else} C, {$endif}
-            ARect,
-            CurrPointText.X {$ifdef use_bg} - FRectMinimap.Left {$endif},
-            CurrPointText.Y {$ifdef use_bg} - FRectminimap.Top {$endif},
-            ACharSize,
-            FTabSize,
-            FLineParts,
-            FColorBG,
-            NColorAfter,
-            Strings.LineSub(
-              WrapItem.NLineIndex,
-              WrapItem.NCharIndex,
-              GetVisibleColumns), //optimize for huge lines
-            bUseSetPixel
-            );
-
-          //end of painting line
-          Inc(NCoordTop, ACharSize.Y);
-          Inc(NWrapIndex);
-          Continue;
-        end
-        else
-        begin
-          {$ifdef debug_fps}
-          if WrapItem.NLength>0 then
-            Inc(FMissMinimap);
-          {$endif}
-        end;
-    {$endif}
-
-    //don't update FLineBottom if minimap paints
-    if AMainText then
-    begin
-      FLineBottom:= NLinesIndex;
-
-      if IsFoldLineNeededBeforeWrapitem(NWrapIndex) then
-      begin
-        NCoordSep:= NCoordTop-1;
-        C.Pen.Color:= Colors.CollapseLine;
-        CanvasLineHorz(C,
-          ARect.Left+FFoldUnderlineOffset,
-          NCoordSep,
-          ARect.Right-FFoldUnderlineOffset
-          );
-      end;
-    end;
-
-    //prepare line
-    NOutputCharsSkipped:= 0;
-    NOutputCellPercentsSkipped:= 0;
-    NOutputStrWidth:= 0;
-
-    CurrPoint.X:= ARect.Left;
-    CurrPoint.Y:= NCoordTop;
-    CurrPointText.X:= CurrPoint.X
-                      + WrapItem.NIndent*ACharSize.X
-                      - AScrollHorz.SmoothPos
-                      + AScrollHorz.NPixelOffset;
-    CurrPointText.Y:= CurrPoint.Y;
-
-    bTrimmedNonSpaces:= false;
-    if AMainText then
-    begin
-      NLineLen:= Strings.LinesLen[NLinesIndex];
-      bLineHuge:= NLineLen>OptMaxLineLenForAccurateCharWidths;
-      if not bLineHuge then
-      begin
-        //little slow for huge lines
-        NSubPos:= WrapItem.NCharIndex;
-        NSubLen:= Min(WrapItem.NLength, GetVisibleColumns+AScrollHorz.NPos+1+6);
-          //+1 because of NPixelOffset
-          //+6 because of HTML color underlines
-        StrOutput:= Strings.LineSub(NLinesIndex, NSubPos, NSubLen);
-
-        if FUnprintedSpacesTrailing then
-          bTrimmedNonSpaces:= NSubPos+NSubLen <= Strings.LineLenWithoutSpace(NLinesIndex);
-
-        if WrapItem.bInitial then
-        begin
-          //very slow for huge lines
-          FTabHelper.FindOutputSkipOffset(
-            NLinesIndex,
-            StrOutput,
-            AScrollHorz.NPos,
-            NOutputCharsSkipped,
-            NOutputCellPercentsSkipped);
-          Delete(StrOutput, 1, NOutputCharsSkipped);
-        end;
-      end
-      else
-      begin
-        //work faster for huge lines (but not accurate horiz scrollbar)
-        NOutputCharsSkipped:= AScrollHorz.NPos;
-        NOutputCellPercentsSkipped:= NOutputCharsSkipped*100;
-
-        NSubPos:= WrapItem.NCharIndex + NOutputCharsSkipped;
-        NSubLen:= Min(WrapItem.NLength, GetVisibleColumns+AScrollHorz.NPos+1+6);
-          //+1 because of NPixelOffset
-          //+6 because of HTML color underlines
-        StrOutput:= Strings.LineSub(NLinesIndex, NSubPos, NSubLen);
-
-        if FUnprintedSpacesTrailing then
-          bTrimmedNonSpaces:= NSubPos+NSubLen <= Strings.LineLenWithoutSpace(NLinesIndex);
-      end;
-
-      Inc(CurrPointText.X, NOutputCellPercentsSkipped * ACharSize.X div 100);
-
-      if Length(StrOutput)>cMaxCharsForOutput then
-        SetLength(StrOutput, cMaxCharsForOutput);
-    end
-    else
-    begin
-      //work very fast for minimap, take LineSub from start
-      StrOutput:= Strings.LineSub(
-        NLinesIndex,
-        1,
-        Min(WrapItem.NLength, GetVisibleColumns)
-        );
-    end;
-
-    LineSeparator:= Strings.LinesSeparator[NLinesIndex];
-    bLineWithCaret:= AMainText and IsLineWithCaret(NLinesIndex);
-    bLineEolSelected:= AMainText and IsPosSelected(WrapItem.NCharIndex-1+WrapItem.NLength, WrapItem.NLineIndex);
-
-    if AMainText then
-    begin
-      //horz scrollbar max: is calculated here, to make variable horz bar
-      //vert scrollbar max: is calculated in UpdateScrollbars
-      if bLineHuge then
-        NOutputMaximalChars:= NLineLen //approximate, it don't consider CJK chars, but OK for huge lines
-      else
-      begin
-        StringItem:= Strings.GetItemPtr(NLinesIndex);
-        if StringItem^.HasAsciiNoTabs then
-          NOutputMaximalChars:= StringItem^.CharLen
-        else
-          NOutputMaximalChars:= CanvasTextWidth(
-            StringItem^.Line,
-            NLinesIndex,
-            FTabHelper,
-            1 //pass CharWidth=1px
-            );
-      end;
-      AScrollHorz.NMax:= Max(AScrollHorz.NMax, NOutputMaximalChars + FOptScrollbarHorizontalAddSpace);
-    end;
-
-    C.Brush.Color:= FColorBG;
-    C.Font.Color:= FColorFont;
-
-    bUseColorOfCurrentLine:= false;
-    if bLineWithCaret then
-      if FOptShowCurLine and (not FOptShowCurLineOnlyFocused or FIsEntered) then
-      begin
-        if FOptShowCurLineMinimal then
-          bUseColorOfCurrentLine:= IsLinePartWithCaret(NLinesIndex, NCoordTop)
-        else
-          bUseColorOfCurrentLine:= true;
-      end;
-
-    DoCalcLineEntireColor(
-      NLinesIndex,
-      bUseColorOfCurrentLine,
-      NColorEntire,
-      bLineColorForced,
-      bHiliteLinesWithSelection);
-
-    if AMainText and FOptZebraActive then
-      if (NLinesIndex+1) mod FOptZebraStep = 0 then
-        NColorEntire:= ColorBlend(NColorEntire, FColorFont, FOptZebraAlphaBlend);
-
-    FillOneLine(NColorEntire, ARect.Left);
-
-    //paint line
-    if StrOutput<>'' then
-    begin
-      if WrapItem.NIndent>0 then
-      begin
-        NColorAfter:= FColorBG;
-        DoCalcPosColor(WrapItem.NCharIndex, NLinesIndex, NColorAfter);
-        DoPaintLineIndent(C, ARect, ACharSize,
-          NCoordTop, WrapItem.NIndent,
-          NColorAfter,
-          AScrollHorz.NPos, AMainText and FOptShowIndentLines);
-      end;
-
-      NColorAfter:= clNone;
-      DoCalcLineHilite(WrapItem, FLineParts{%H-},
-        NOutputCharsSkipped, cMaxCharsForOutput,
-        NColorEntire, bLineColorForced,
-        NColorAfter, AMainText);
-
-      if FLineParts[0].Offset<0 then
-      begin
-        //some bug in making parts! to fix!
-        //raise Exception.Create('Program bug in text renderer, report to author!');
-        C.Font.Color:= clRed;
-        C.TextOut(CurrPointText.X, CurrPointText.Y, 'Program bug in text renderer, report to author!');
-        Break;
-      end;
-
-      //apply DimRanges
-      if Assigned(FDimRanges) then
-      begin
-        NDimValue:= FDimRanges.GetDimValue(WrapItem.NLineIndex, -1);
-        if NDimValue>0 then //-1: no ranges found, 0: no effect
-          DoPartsDim(FLineParts, NDimValue, FColorBG);
-      end;
-
-      //adapter may return ColorAfterEol, paint it
-      if FOptShowFullHilite then
-        if NColorAfter<>clNone then
-          FillOneLine(NColorAfter, CurrPointText.X);
-
-      if AWithGutter then
-        Event:= FOnDrawLine
-      else
-        Event:= nil;
-
-      if OptUnprintedReplaceSpec then
-        SRemoveAsciiControlChars(StrOutput, WideChar(OptUnprintedReplaceSpecToCode));
-
-      if AMainText then
-      begin
-        TextOutProps.Editor:= Self;
-        TextOutProps.SuperFast:= bLineHuge;
-        TextOutProps.TabHelper:= FTabHelper;
-        TextOutProps.LineIndex:= NLinesIndex;
-        TextOutProps.CharIndexInLine:= WrapItem.NCharIndex;
-        TextOutProps.CharSize:= ACharSize;
-        TextOutProps.CharsSkipped:= NOutputCellPercentsSkipped div 100;
-        TextOutProps.TrimmedTrailingNonSpaces:= bTrimmedNonSpaces;
-        TextOutProps.DrawEvent:= Event;
-        TextOutProps.ControlWidth:= ClientWidth+ACharSize.X*2;
-        TextOutProps.TextOffsetFromLine:= FOptTextOffsetFromLine;
-
-        TextOutProps.ShowUnprinted:= AMainText and FUnprintedVisible and FUnprintedSpaces;
-        TextOutProps.ShowUnprintedSpacesTrailing:= FUnprintedSpacesTrailing;
-        TextOutProps.ShowUnprintedSpacesBothEnds:= FUnprintedSpacesBothEnds;
-        TextOutProps.ShowUnprintedSpacesOnlyInSelection:= FUnprintedSpacesOnlyInSelection;
-        TextOutProps.DetectIsPosSelected:= @IsPosSelected;
-
-        TextOutProps.ShowFontLigatures:= FOptShowFontLigatures and (not bLineWithCaret);
-        TextOutProps.ColorNormalFont:= Colors.TextFont;
-        TextOutProps.ColorUnprintedFont:= Colors.UnprintedFont;
-        TextOutProps.ColorUnprintedHexFont:= Colors.UnprintedHexFont;
-
-        TextOutProps.FontNormal_Name:= Font.Name;
-        TextOutProps.FontNormal_Size:= DoScaleFont(Font.Size);
-
-        TextOutProps.FontItalic_Name:= FontItalic.Name;
-        TextOutProps.FontItalic_Size:= DoScaleFont(FontItalic.Size);
-
-        TextOutProps.FontBold_Name:= FontBold.Name;
-        TextOutProps.FontBold_Size:= DoScaleFont(FontBold.Size);
-
-        TextOutProps.FontBoldItalic_Name:= FontBoldItalic.Name;
-        TextOutProps.FontBoldItalic_Size:= DoScaleFont(FontBoldItalic.Size);
-
-        CanvasTextOut(C,
-          CurrPointText.X,
-          CurrPointText.Y,
-          StrOutput,
-          @FLineParts,
-          NOutputStrWidth,
-          TextOutProps
-          );
-
-        //paint selection bg, after applying ColorAfterEol
-        DoPaintSelectedLineBG(C, ACharSize, ARect,
-          CurrPoint,
-          CurrPointText,
-          WrapItem,
-          NOutputStrWidth,
-          AScrollHorz);
-      end
-      else
-      if StrOutput<>'' then
-        CanvasTextOutMinimap(
-          {$ifdef use_bg} FFastBmp, {$else} C, {$endif}
-          ARect,
-          CurrPointText.X {$ifdef use_bg} - FRectMinimap.Left {$endif},
-          CurrPointText.Y {$ifdef use_bg} - FRectminimap.Top {$endif},
-          ACharSize,
-          FTabSize,
-          FLineParts,
-          FColorBG,
-          NColorAfter,
-          Strings.LineSub(
-            WrapItem.NLineIndex,
-            WrapItem.NCharIndex,
-            GetVisibleColumns), //optimize for huge lines
-          bUseSetPixel
-          );
-
-      //restore after textout
-      C.Font.Style:= Font.Style;
-    end
-    else
-    //paint empty line bg
-    begin
-      if FOptShowFullHilite then
-      begin
-        NColorAfter:= clNone;
-        DoCalcPosColor(0, NLinesIndex, NColorAfter);
-        if NColorAfter<>clNone then
-          FillOneLine(NColorAfter, ARect.Left);
-      end;
-
-      DoPaintSelectedLineBG(C, ACharSize, ARect,
-        CurrPoint,
-        CurrPointText,
-        WrapItem,
-        0,
-        AScrollHorz);
-    end;
-
-    if AMainText then
-    begin
-      CoordAfterText.X:= CurrPointText.X+NOutputStrWidth;
-      CoordAfterText.Y:= CurrPointText.Y;
-
-      if WrapItem.NFinal=cWrapItemFinal then
-      begin
-        //for OptShowFullWidthForSelection=false paint eol bg
-        if bLineEolSelected then
-        begin
-          C.Brush.Color:= Colors.TextSelBG;
-          C.FillRect(
-            CoordAfterText.X,
-            CoordAfterText.Y,
-            CoordAfterText.X+ACharSize.X,
-            CoordAfterText.Y+ACharSize.Y);
-        end;
-
-        //paint eol mark
-        if FUnprintedVisible and FUnprintedEnds then
-        begin
+      if NWrapIndex>=0 then
+        if OptUnprintedVisible and OptUnprintedEof then
           if OptUnprintedEndsDetails then
-            DoPaintUnprintedEolText(C,
-              cLineEndNiceNames[Strings.LinesEnds[WrapItem.NLineIndex]],
-              CoordAfterText.X,
-              CoordAfterText.Y,
+            DoPaintUnprintedSymbols(C,
+              cEndingTextEOF,
+              ARect.Left,
+              RectLine.Top,
+              ACharSize,
               Colors.UnprintedFont,
               Colors.UnprintedBG)
           else
-            DoPaintUnprintedEolArrow(C,
-              CoordAfterText.X,
-              CoordAfterText.Y,
-              ACharSize,
-              Colors.UnprintedFont);
-        end;
-      end
-      else
-      begin
-        //paint wrapped-line-part mark
-        if FUnprintedVisible and FUnprintedEnds then
-          DoPaintUnprintedWrapMark(C,
-            CoordAfterText.X,
-            CoordAfterText.Y,
-            ACharSize,
-            Colors.UnprintedFont);
-      end;
-
-      //draw collapsed-mark
-      if WrapItem.NFinal=cWrapItemCollapsed then
-        DoPaintFoldedMark(C,
-          Strings.LinesFoldFrom[NLinesIndex, FEditorIndex]-1,
-          NLinesIndex,
-          CoordAfterText.X,
-          CoordAfterText.Y,
-          GetFoldedMarkText(NLinesIndex));
+            CanvasArrowHorz(C,
+              RectLine,
+              Colors.UnprintedFont, OptUnprintedEofCharLength*ACharSize.X,
+              false,
+              OptUnprintedTabPointerScale);
+      Break;
     end;
 
-    //draw separators
-    if LineSeparator<>cLineSepNone then
+    //consider gap before 1st line
+    if (NWrapIndex=0) and AScrollVert.TopGapVisible and (Gaps.SizeOfGapTop>0) then
     begin
-      if LineSeparator=cLineSepTop then
-        NCoordSep:= NCoordTop
-      else
-        NCoordSep:= NCoordTop+ACharSize.Y-1;
-      C.Pen.Color:= Colors.BlockSepLine;
-      CanvasLineHorz(C, ARect.Left, NCoordSep, ARect.Right);
-    end;
-
-    //draw gutter
-    if AWithGutter then
-    begin
-      //paint area over scrolled text
-      C.Brush.Color:= Colors.GutterBG;
-      C.FillRect(FRectGutter.Left, NCoordTop, FRectGutter.Right, NCoordTop+ACharSize.Y);
-
-      //gutter band: number
-      Band:= FGutter[FGutterBandNumbers];
-      if Band.Visible then
-      begin
-        if bLineWithCaret and FOptShowGutterCaretBG then
-        begin
-          DoPaintGutterBandBG(C, FGutterBandNumbers, Colors.GutterCaretBG, NCoordTop, NCoordTop+ACharSize.Y, false);
-          C.Font.Color:= Colors.GutterCaretFont;
-        end
-        else
-          C.Font.Color:= Colors.GutterFont;
-
-        if WrapItem.bInitial then
-          DoPaintLineNumber(C, NLinesIndex, NCoordTop, Band);
-      end;
-
-      //gutter decor
-      NBandDecor:= FGutterBandDecor;
-      if NBandDecor<0 then
-        NBandDecor:= FGutterBandBookmarks;
-
-      Band:= FGutter[NBandDecor];
-      if Band.Visible then
-        if WrapItem.bInitial then
-          DoPaintGutterDecor(C, NLinesIndex,
-            Rect(
-              Band.Left,
-              NCoordTop,
-              Band.Right,
-              NCoordTop+ACharSize.Y
-              ));
-
-      //gutter band: bookmark
-      Band:= FGutter[FGutterBandBookmarks];
-      if Band.Visible then
-        if WrapItem.bInitial then
-        begin
-          if Strings.Bookmarks.Find(NLinesIndex)>=0 then
-            DoEventDrawBookmarkIcon(C, NLinesIndex,
-              Rect(
-                Band.Left,
-                NCoordTop,
-                Band.Right,
-                NCoordTop+ACharSize.Y
-                ));
-        end;
-
-      //gutter band: fold
-      Band:= FGutter[FGutterBandFolding];
-      if Band.Visible then
-      begin
-        DoPaintGutterBandBG(C, FGutterBandFolding, Colors.GutterFoldBG, NCoordTop, NCoordTop+ACharSize.Y, false);
-        DoPaintGutterFolding(C,
-          NWrapIndex,
-          Band.Left,
-          Band.Right,
-          NCoordTop,
-          NCoordTop+ACharSize.Y
-          );
-      end;
-
-      //gutter band: state
-      Band:= FGutter[FGutterBandStates];
-      if Band.Visible then
-      begin
-        LineState:= Strings.LinesState[NLinesIndex];
-        if LineState<>cLineStateNone then
-          DoPaintGutterBandBG(C,
-            FGutterBandStates,
-            NColorOfStates[LineState],
-            NCoordTop,
-            NCoordTop+ACharSize.Y,
-            false);
-      end;
-
-      //gutter band: separator
-      if FGutter[FGutterBandSeparator].Visible then
-        DoPaintGutterBandBG(C, FGutterBandSeparator, Colors.GutterSeparatorBG, NCoordTop, NCoordTop+ACharSize.Y, false);
-      //gutter band: empty indent
-      if FGutter[FGutterBandEmpty].Visible then
-        DoPaintGutterBandBG(C, FGutterBandEmpty, FColorBG, NCoordTop, NCoordTop+ACharSize.Y, false);
-    end;
-
-    //end of painting line
-    Inc(NCoordTop, ACharSize.Y);
-    Inc(NWrapIndex);
-
-    //consider gap (not for minimap)
-    if AMainText and (WrapItem.NFinal=cWrapItemFinal) then
-    begin
-      GapItem:= Gaps.Find(NLinesIndex);
+      GapItem:= Gaps.Find(-1);
       if Assigned(GapItem) then
-      begin
-        DoPaintGapTo(C, Rect(ARect.Left, NCoordTop, ARect.Right, NCoordTop+GapItem.Size), GapItem);
-        NCoordTop+= GapItem.Size;
-      end;
+        Inc(RectLine.Bottom, GapItem.Size);
     end;
+
+    //conside gap for this line
+    GapItem:= Gaps.Find(WrapInfo[NWrapIndex].NLineIndex);
+    if Assigned(GapItem) then
+      Inc(RectLine.Bottom, GapItem.Size);
+
+    DoPaintLine(C, RectLine, ACharSize, AScrollHorz, AScrollVert, NWrapIndex, FParts);
+    if AWithGutter then
+      DoPaintGutterOfLine(C, RectLine, ACharSize, NWrapIndex);
+
+    //update LineBottom as index of last painted line
+    FLineBottom:= FWrapInfo[NWrapIndex].NLineIndex;
+
+    Inc(NWrapIndex);
   until false;
 
-  //staples
-  if AMainText then
-    DoPaintStaples(C, ARect, ACharSize, AScrollHorz);
+  //block staples
+  DoPaintStaples(C, ARect, ACharSize, AScrollHorz);
 end;
+
+procedure TATSynEdit.DoPaintMinimapTextToBGRABitmap(
+  const ARect: TRect; ACharSize: TPoint;
+  var AScrollHorz, AScrollVert: TATEditorScrollInfo);
+var
+  RectLine: TRect;
+  NWrapIndex: integer;
+begin
+  FMinimapBmp.SetSize(ARect.Width, ARect.Height);
+  FMinimapBmp.Fill(FColorBG);
+
+  //wrap turned off can cause bad scrollpos, fix it
+  with AScrollVert do
+    NPos:= Min(NPos, NPosLast);
+
+  NWrapIndex:= Max(0, AScrollVert.NPos);
+
+  RectLine.Left:= ARect.Left;
+  RectLine.Right:= ARect.Right;
+  RectLine.Top:= 0;
+  RectLine.Bottom:= ARect.Top;
+
+  repeat
+    RectLine.Top:= RectLine.Bottom;
+    RectLine.Bottom:= RectLine.Top+ACharSize.Y;
+    if RectLine.Top>ARect.Bottom then Break;
+
+    if not FWrapInfo.IsIndexValid(NWrapIndex) then
+      Break;
+
+    DoPaintMinimapLine(RectLine, ACharSize, AScrollHorz, AScrollVert, NWrapIndex, FPartsMinimap);
+
+    Inc(NWrapIndex);
+  until false;
+end;
+
+
+procedure TATSynEdit.DoPaintLine(C: TCanvas;
+  ARectLine: TRect;
+  ACharSize: TPoint;
+  var AScrollHorz, AScrollVert: TATEditorScrollInfo;
+  const AWrapIndex: integer;
+  var ATempParts: TATLineParts);
+  //
+  procedure FillOneLine(AFillColor: TColor; ARectLeft: integer);
+  begin
+    C.Brush.Color:= AFillColor;
+    C.FillRect(ARectLine);
+  end;
+  //
+var
+  NLinesIndex, NLineLen, NCount: integer;
+  NOutputCharsSkipped, NOutputCellPercentsSkipped: integer;
+  NOutputStrWidth, NOutputMaximalChars: integer;
+  NCoordSep: integer;
+  WrapItem: TATWrapItem;
+  GapItem: TATGapItem;
+  StringItem: PATStringItem;
+  NColorEntire, NColorAfter: TColor;
+  NDimValue: integer;
+  StrOutput: atString;
+  CurrPoint, CurrPointText, CoordAfterText: TPoint;
+  LineSeparator: TATLineSeparator;
+  bLineWithCaret, bLineEolSelected, bLineColorForced, bLineHuge: boolean;
+  Event: TATSynEditDrawLineEvent;
+  TextOutProps: TATCanvasTextOutProps;
+  NSubPos, NSubLen: integer;
+  bHiliteLinesWithSelection: boolean;
+  bTrimmedNonSpaces: boolean;
+  bUseColorOfCurrentLine: boolean;
+begin
+  bHiliteLinesWithSelection:= false;
+
+  WrapItem:= FWrapInfo[AWrapIndex];
+  NLinesIndex:= WrapItem.NLineIndex;
+  if not Strings.IsIndexValid(NLinesIndex) then Exit;
+
+  //support Gap before the 1st line
+  if (AWrapIndex=0) and AScrollVert.TopGapVisible and (Gaps.SizeOfGapTop>0) then
+  begin
+    GapItem:= Gaps.Find(-1);
+    if Assigned(GapItem) then
+    begin
+      DoPaintGap(C, Rect(ARectLine.Left, ARectLine.Top, ARectLine.Right, ARectLine.Top+GapItem.Size), GapItem);
+      Inc(ARectLine.Top, GapItem.Size);
+    end;
+  end;
+
+  if IsFoldLineNeededBeforeWrapitem(AWrapIndex) then
+  begin
+    NCoordSep:= ARectLine.Top-1;
+    C.Pen.Color:= Colors.CollapseLine;
+    CanvasLineHorz(C,
+      ARectLine.Left+FFoldUnderlineOffset,
+      NCoordSep,
+      ARectLine.Right-FFoldUnderlineOffset
+      );
+  end;
+
+  //prepare line
+  NOutputCharsSkipped:= 0;
+  NOutputCellPercentsSkipped:= 0;
+  NOutputStrWidth:= 0;
+
+  CurrPoint.X:= ARectLine.Left;
+  CurrPoint.Y:= ARectLine.Top;
+  CurrPointText.X:= CurrPoint.X
+                    + WrapItem.NIndent*ACharSize.X
+                    - AScrollHorz.SmoothPos
+                    + AScrollHorz.NPixelOffset;
+  CurrPointText.Y:= CurrPoint.Y;
+
+  bTrimmedNonSpaces:= false;
+
+  NLineLen:= Strings.LinesLen[NLinesIndex];
+  bLineHuge:= WrapItem.NLength>OptMaxLineLenForAccurateCharWidths;
+          //not this: NLineLen>OptMaxLineLenForAccurateCharWidths;
+
+  if not bLineHuge then
+  begin
+    //little slow for huge lines
+    NSubPos:= WrapItem.NCharIndex;
+    NSubLen:= Min(WrapItem.NLength, FVisibleColumns+AScrollHorz.NPos+1+6);
+      //+1 because of NPixelOffset
+      //+6 because of HTML color underlines
+    StrOutput:= Strings.LineSub(NLinesIndex, NSubPos, NSubLen);
+
+    if FUnprintedSpacesTrailing then
+      bTrimmedNonSpaces:= NSubPos+NSubLen <= Strings.LineLenWithoutSpace(NLinesIndex);
+
+    if WrapItem.bInitial then
+    begin
+      //very slow for huge lines
+      FTabHelper.FindOutputSkipOffset(
+        NLinesIndex,
+        StrOutput,
+        AScrollHorz.NPos,
+        NOutputCharsSkipped,
+        NOutputCellPercentsSkipped);
+      Delete(StrOutput, 1, NOutputCharsSkipped);
+    end;
+  end
+  else
+  begin
+    //work faster for huge lines (but not accurate horiz scrollbar)
+    NOutputCharsSkipped:= AScrollHorz.NPos;
+    NOutputCellPercentsSkipped:= NOutputCharsSkipped*100;
+
+    NSubPos:= WrapItem.NCharIndex + NOutputCharsSkipped;
+    NSubLen:= Min(WrapItem.NLength, FVisibleColumns+AScrollHorz.NPos+1+6);
+      //+1 because of NPixelOffset
+      //+6 because of HTML color underlines
+    StrOutput:= Strings.LineSub(NLinesIndex, NSubPos, NSubLen);
+
+    if FUnprintedSpacesTrailing then
+      bTrimmedNonSpaces:= NSubPos+NSubLen <= Strings.LineLenWithoutSpace(NLinesIndex);
+  end;
+
+  Inc(CurrPointText.X, NOutputCellPercentsSkipped * ACharSize.X div 100);
+
+  if Length(StrOutput)>cMaxCharsForOutput then
+    SetLength(StrOutput, cMaxCharsForOutput);
+
+  if FOptMaskCharUsed then
+    StrOutput:= StringOfCharW(FOptMaskChar, Length(StrOutput));
+
+  LineSeparator:= Strings.LinesSeparator[NLinesIndex];
+  bLineWithCaret:= IsLineWithCaret(NLinesIndex);
+  bLineEolSelected:= IsPosSelected(WrapItem.NCharIndex-1+WrapItem.NLength, WrapItem.NLineIndex);
+
+  //horz scrollbar max: is calculated here, to make variable horz bar
+  //vert scrollbar max: is calculated in UpdateScrollbars
+  if bLineHuge then
+    NOutputMaximalChars:= NLineLen //approximate, it don't consider CJK chars, but OK for huge lines
+  else
+  begin
+    StringItem:= Strings.GetItemPtr(NLinesIndex);
+    if StringItem^.HasAsciiNoTabs then
+      NOutputMaximalChars:= StringItem^.CharLen
+    else
+      NOutputMaximalChars:= CanvasTextWidth(
+        StringItem^.Line,
+        NLinesIndex,
+        FTabHelper,
+        1 //pass CharWidth=1px
+        );
+  end;
+  AScrollHorz.NMax:= Max(AScrollHorz.NMax, NOutputMaximalChars + FOptScrollbarHorizontalAddSpace);
+
+  C.Brush.Color:= FColorBG;
+  C.Font.Name:= Font.Name;
+  C.Font.Size:= DoScaleFont(Font.Size);
+  C.Font.Color:= FColorFont;
+
+  bUseColorOfCurrentLine:= false;
+  if bLineWithCaret then
+    if FOptShowCurLine and (not FOptShowCurLineOnlyFocused or FIsEntered) then
+    begin
+      if FOptShowCurLineMinimal then
+        bUseColorOfCurrentLine:= IsLinePartWithCaret(NLinesIndex, ARectLine.Top)
+      else
+        bUseColorOfCurrentLine:= true;
+    end;
+
+  DoCalcLineEntireColor(
+    NLinesIndex,
+    bUseColorOfCurrentLine,
+    NColorEntire,
+    bLineColorForced,
+    bHiliteLinesWithSelection);
+
+  if FOptZebraActive then
+    if (NLinesIndex+1) mod FOptZebraStep = 0 then
+      NColorEntire:= ColorBlend(NColorEntire, FColorFont, FOptZebraAlphaBlend);
+
+  FillOneLine(NColorEntire, ARectLine.Left);
+
+  //paint line
+  if StrOutput<>'' then
+  begin
+    if (WrapItem.NIndent>0) then
+    begin
+      NColorAfter:= FColorBG;
+      DoCalcPosColor(WrapItem.NCharIndex, NLinesIndex, NColorAfter);
+      DoPaintLineIndent(C, ARectLine, ACharSize,
+        ARectLine.Top, WrapItem.NIndent,
+        NColorAfter,
+        AScrollHorz.NPos, FOptShowIndentLines);
+    end;
+
+    NColorAfter:= clNone;
+
+    DoCalcLineHilite(WrapItem, ATempParts{%H-},
+      NOutputCharsSkipped, cMaxCharsForOutput,
+      NColorEntire, bLineColorForced,
+      NColorAfter, true);
+
+    if ATempParts[0].Offset<0 then
+    begin
+      //some bug in making parts! to fix!
+      //raise Exception.Create('Program bug in text renderer, report to author!');
+      C.Font.Color:= clRed;
+      C.TextOut(CurrPointText.X, CurrPointText.Y, 'Program bug in text renderer, report to author!');
+      Exit;
+    end;
+
+    //apply DimRanges
+    if Assigned(FDimRanges) then
+    begin
+      NDimValue:= FDimRanges.GetDimValue(WrapItem.NLineIndex, -1);
+      if NDimValue>0 then //-1: no ranges found, 0: no effect
+        DoPartsDim(ATempParts, NDimValue, FColorBG);
+    end;
+
+    //adapter may return ColorAfterEol, paint it
+    if FOptShowFullHilite then
+      if NColorAfter<>clNone then
+        FillOneLine(NColorAfter, CurrPointText.X);
+
+    Event:= FOnDrawLine;
+
+    if OptUnprintedReplaceSpec then
+      SRemoveAsciiControlChars(StrOutput, WideChar(OptUnprintedReplaceSpecToCode));
+
+    //truncate text to not paint over screen
+    NCount:= ARectLine.Width div ACharSize.X + 2;
+    if Length(StrOutput)>NCount then
+      SetLength(StrOutput, NCount);
+
+      TextOutProps.Editor:= Self;
+      TextOutProps.HasAsciiNoTabs:= Strings.LinesHasAsciiNoTabs[NLinesIndex];
+      TextOutProps.SuperFast:= bLineHuge;
+      TextOutProps.TabHelper:= FTabHelper;
+      TextOutProps.LineIndex:= NLinesIndex;
+      TextOutProps.CharIndexInLine:= WrapItem.NCharIndex;
+      TextOutProps.CharSize:= ACharSize;
+      TextOutProps.CharsSkipped:= NOutputCellPercentsSkipped div 100;
+      TextOutProps.TrimmedTrailingNonSpaces:= bTrimmedNonSpaces;
+      TextOutProps.DrawEvent:= Event;
+      TextOutProps.ControlWidth:= ClientWidth+ACharSize.X*2;
+      TextOutProps.TextOffsetFromLine:= FOptTextOffsetFromLine;
+
+      TextOutProps.ShowUnprinted:= FUnprintedVisible and FUnprintedSpaces;
+      TextOutProps.ShowUnprintedSpacesTrailing:= FUnprintedSpacesTrailing;
+      TextOutProps.ShowUnprintedSpacesBothEnds:= FUnprintedSpacesBothEnds;
+      TextOutProps.ShowUnprintedSpacesOnlyInSelection:= FUnprintedSpacesOnlyInSelection;
+      TextOutProps.DetectIsPosSelected:= @IsPosSelected;
+
+      TextOutProps.ShowFontLigatures:= FOptShowFontLigatures and (not bLineWithCaret);
+      TextOutProps.ColorNormalFont:= Colors.TextFont;
+      TextOutProps.ColorUnprintedFont:= Colors.UnprintedFont;
+      TextOutProps.ColorUnprintedHexFont:= Colors.UnprintedHexFont;
+
+      TextOutProps.FontNormal_Name:= Font.Name;
+      TextOutProps.FontNormal_Size:= DoScaleFont(Font.Size);
+
+      TextOutProps.FontItalic_Name:= FontItalic.Name;
+      TextOutProps.FontItalic_Size:= DoScaleFont(FontItalic.Size);
+
+      TextOutProps.FontBold_Name:= FontBold.Name;
+      TextOutProps.FontBold_Size:= DoScaleFont(FontBold.Size);
+
+      TextOutProps.FontBoldItalic_Name:= FontBoldItalic.Name;
+      TextOutProps.FontBoldItalic_Size:= DoScaleFont(FontBoldItalic.Size);
+
+      CanvasTextOut(C,
+        CurrPointText.X,
+        CurrPointText.Y,
+        StrOutput,
+        @ATempParts,
+        NOutputStrWidth,
+        TextOutProps
+        );
+
+      //paint selection bg, after applying ColorAfterEol
+      DoPaintSelectedLineBG(C, ACharSize, ARectLine,
+        CurrPoint,
+        CurrPointText,
+        WrapItem,
+        NOutputStrWidth,
+        AScrollHorz);
+
+    //restore after textout
+    C.Font.Style:= Font.Style;
+  end
+  else
+  //paint empty line bg
+  begin
+    if FOptShowFullHilite then
+    begin
+      NColorAfter:= clNone;
+      //visible StrOutput is empty, but the line itself may be not empty (because of horz scroll)
+      DoCalcPosColor(NLineLen, NLinesIndex, NColorAfter);
+      if NColorAfter<>clNone then
+        FillOneLine(NColorAfter, ARectLine.Left);
+    end;
+
+    DoPaintSelectedLineBG(C, ACharSize, ARectLine,
+      CurrPoint,
+      CurrPointText,
+      WrapItem,
+      0,
+      AScrollHorz);
+  end;
+
+  CoordAfterText.X:= CurrPointText.X+NOutputStrWidth;
+  CoordAfterText.Y:= CurrPointText.Y;
+
+  if WrapItem.NFinal=cWrapItemFinal then
+  begin
+    //for OptShowFullWidthForSelection=false paint eol bg
+    if bLineEolSelected then
+    begin
+      C.Brush.Color:= Colors.TextSelBG;
+      C.FillRect(
+        CoordAfterText.X,
+        CoordAfterText.Y,
+        CoordAfterText.X+ACharSize.X,
+        CoordAfterText.Y+ACharSize.Y);
+    end;
+
+    //paint eol mark
+    if FUnprintedVisible and FUnprintedEnds then
+    begin
+      if OptUnprintedEndsDetails then
+        DoPaintUnprintedSymbols(C,
+          cLineEndsToSymbols[Strings.LinesEnds[WrapItem.NLineIndex]],
+          CoordAfterText.X,
+          CoordAfterText.Y,
+          ACharSize,
+          Colors.UnprintedFont,
+          Colors.UnprintedBG)
+      else
+        DoPaintUnprintedEndSymbol(C,
+          CoordAfterText.X,
+          CoordAfterText.Y,
+          ACharSize,
+          Colors.UnprintedFont,
+          Colors.TextBG);
+    end;
+  end
+  else
+  begin
+    //paint wrapped-line-part mark
+    if FUnprintedVisible and FUnprintedEnds then
+      DoPaintUnprintedWrapMark(C,
+        CoordAfterText.X,
+        CoordAfterText.Y,
+        ACharSize,
+        Colors.UnprintedFont);
+  end;
+
+  //draw collapsed-mark
+  if WrapItem.NFinal=cWrapItemCollapsed then
+    DoPaintFoldedMark(C,
+      Strings.LinesFoldFrom[NLinesIndex, FEditorIndex]-1,
+      NLinesIndex,
+      CoordAfterText.X,
+      CoordAfterText.Y,
+      GetFoldedMarkText(NLinesIndex));
+
+  //draw separators
+  if (LineSeparator<>cLineSepNone) then
+  begin
+    if LineSeparator=cLineSepTop then
+      NCoordSep:= ARectLine.Top
+    else
+      NCoordSep:= ARectLine.Top+ACharSize.Y-1;
+    C.Pen.Color:= Colors.BlockSepLine;
+    CanvasLineHorz(C, ARectLine.Left, NCoordSep, ARectLine.Right);
+  end;
+
+  //consider gap (not for minimap)
+  if (WrapItem.NFinal=cWrapItemFinal) then
+  begin
+    //end of painting line
+    Inc(ARectLine.Top, ACharSize.Y);
+
+    GapItem:= Gaps.Find(NLinesIndex);
+    if Assigned(GapItem) then
+    begin
+      DoPaintGap(C, Rect(ARectLine.Left, ARectLine.Top, ARectLine.Right, ARectLine.Top+GapItem.Size), GapItem);
+      Inc(ARectLine.Top, GapItem.Size);
+    end;
+  end;
+end;
+
+procedure TATSynEdit.DoPaintMinimapLine(
+  ARectLine: TRect;
+  ACharSize: TPoint;
+  var AScrollHorz, AScrollVert: TATEditorScrollInfo;
+  const AWrapIndex: integer;
+  var ATempParts: TATLineParts);
+  //
+  procedure FillOneLine(AFillColor: TColor; ARectLeft: integer);
+  begin
+    FMinimapBmp.FillRect(
+      ARectLeft - FRectMinimap.Left,
+      ARectLine.Top - FRectMinimap.Top,
+      FRectMinimap.Width,
+      ARectLine.Top - FRectMinimap.Top + ACharSize.Y,
+      AFillColor);
+  end;
+  //
+var
+  NLinesIndex, NCount: integer;
+  NOutputCharsSkipped: integer;
+  WrapItem: TATWrapItem;
+  NColorEntire, NColorAfter: TColor;
+  StrOutput: atString;
+  CurrPoint, CurrPointText: TPoint;
+  bLineColorForced: boolean;
+  bUseSetPixel: boolean;
+  bUseColorOfCurrentLine: boolean;
+begin
+  bUseSetPixel:=
+    {$ifndef windows} DoubleBuffered and {$endif}
+    (ACharSize.X=1);
+
+  if not FWrapInfo.IsIndexValid(AWrapIndex) then Exit; //e.g. main thread updated WrapInfo
+  WrapItem:= FWrapInfo[AWrapIndex];
+  NLinesIndex:= WrapItem.NLineIndex;
+  if not Strings.IsIndexValid(NLinesIndex) then Exit;
+
+  //prepare line
+  NOutputCharsSkipped:= 0;
+
+  CurrPoint.X:= ARectLine.Left;
+  CurrPoint.Y:= ARectLine.Top;
+  CurrPointText.X:= CurrPoint.X
+                    + WrapItem.NIndent*ACharSize.X
+                    - AScrollHorz.SmoothPos
+                    + AScrollHorz.NPixelOffset;
+  CurrPointText.Y:= CurrPoint.Y;
+
+  //work very fast for minimap, take LineSub from start
+  StrOutput:= Strings.LineSub(
+    NLinesIndex,
+    1,
+    Min(WrapItem.NLength, FVisibleColumns)
+    );
+
+  //FMinimapBmp.Canvas.Brush.Color:= FColorBG;
+
+  bUseColorOfCurrentLine:= false;
+
+  DoCalcLineEntireColor(
+    NLinesIndex,
+    bUseColorOfCurrentLine,
+    NColorEntire,
+    bLineColorForced,
+    FMinimapHiliteLinesWithSelection
+    );
+
+  FillOneLine(NColorEntire, ARectLine.Left);
+
+  //paint line
+  if StrOutput<>'' then
+  begin
+    NColorAfter:= clNone;
+
+    DoCalcLineHilite(WrapItem, ATempParts{%H-},
+      NOutputCharsSkipped, cMaxCharsForOutput,
+      NColorEntire, bLineColorForced,
+      NColorAfter, false);
+
+    //adapter may return ColorAfterEol, paint it
+    if FOptShowFullHilite then
+      if NColorAfter<>clNone then
+        FillOneLine(NColorAfter, CurrPointText.X);
+
+    //truncate text to not paint over screen
+    NCount:= ARectLine.Width div ACharSize.X + 2;
+    if Length(StrOutput)>NCount then
+      SetLength(StrOutput, NCount);
+
+    if StrOutput<>'' then
+      CanvasTextOutMinimap(
+        FMinimapBmp,
+        ARectLine,
+        CurrPointText.X - FRectMinimap.Left,
+        CurrPointText.Y - FRectminimap.Top,
+        ACharSize,
+        FTabSize,
+        ATempParts,
+        FColorBG,
+        NColorAfter,
+        Strings.LineSub(
+          WrapItem.NLineIndex,
+          WrapItem.NCharIndex,
+          FVisibleColumns), //optimize for huge lines
+        bUseSetPixel
+        );
+  end
+  else
+  //paint empty line bg
+  begin
+    if FOptShowFullHilite then
+    begin
+      NColorAfter:= clNone;
+      DoCalcPosColor(0, NLinesIndex, NColorAfter);
+      if NColorAfter<>clNone then
+        FillOneLine(NColorAfter, ARectLine.Left);
+    end;
+
+    {
+    //TODO???
+    DoPaintSelectedLineBG(C, ACharSize, ARectLine,
+      CurrPoint,
+      CurrPointText,
+      WrapItem,
+      0,
+      AScrollHorz);
+    }
+  end;
+end;
+
+procedure TATSynEdit.DoPaintGutterOfLine(C: TCanvas; ARect: TRect; ACharSize: TPoint;
+  AWrapIndex: integer);
+var
+  WrapItem: TATWrapItem;
+  LineState: TATLineState;
+  Band: TATGutterItem;
+  bLineWithCaret: boolean;
+  NLinesIndex, NBandDecor: integer;
+begin
+  WrapItem:= FWrapInfo[AWrapIndex];
+  NLinesIndex:= WrapItem.NLineIndex;
+  if not Strings.IsIndexValid(NLinesIndex) then exit;
+  bLineWithCaret:= IsLineWithCaret(NLinesIndex);
+
+  //paint area over scrolled text
+  C.Brush.Color:= Colors.GutterBG;
+  C.FillRect(FRectGutter.Left, ARect.Top, FRectGutter.Right, ARect.Bottom);
+
+  //gutter band: number
+  Band:= FGutter[FGutterBandNumbers];
+  if Band.Visible then
+  begin
+    if bLineWithCaret and FOptShowGutterCaretBG then
+    begin
+      DoPaintGutterBandBG(C, FGutterBandNumbers, Colors.GutterCaretBG, ARect.Top, ARect.Bottom, false);
+      C.Font.Color:= Colors.GutterCaretFont;
+    end
+    else
+      C.Font.Color:= Colors.GutterFont;
+
+    if WrapItem.bInitial then
+      DoPaintLineNumber(C, NLinesIndex, ARect.Top, Band);
+  end;
+
+  //gutter decor
+  NBandDecor:= FGutterBandDecor;
+  if NBandDecor<0 then
+    NBandDecor:= FGutterBandBookmarks;
+
+  Band:= FGutter[NBandDecor];
+  if Band.Visible then
+    if WrapItem.bInitial then
+      DoPaintGutterDecor(C, NLinesIndex,
+        Rect(
+          Band.Left,
+          ARect.Top,
+          Band.Right,
+          ARect.Bottom
+          ));
+
+  //gutter band: bookmark
+  Band:= FGutter[FGutterBandBookmarks];
+  if Band.Visible then
+    if WrapItem.bInitial then
+    begin
+      if Strings.Bookmarks.Find(NLinesIndex)>=0 then
+        DoEventDrawBookmarkIcon(C, NLinesIndex,
+          Rect(
+            Band.Left,
+            ARect.Top,
+            Band.Right,
+            ARect.Bottom
+            ));
+    end;
+
+  //gutter band: fold
+  Band:= FGutter[FGutterBandFolding];
+  if Band.Visible then
+  begin
+    DoPaintGutterBandBG(C, FGutterBandFolding, Colors.GutterFoldBG, ARect.Top, ARect.Bottom, false);
+    DoPaintGutterFolding(C,
+      AWrapIndex,
+      Band.Left,
+      Band.Right,
+      ARect.Top,
+      ARect.Bottom
+      );
+  end;
+
+  //gutter band: state
+  Band:= FGutter[FGutterBandStates];
+  if Band.Visible then
+  begin
+    LineState:= Strings.LinesState[NLinesIndex];
+    if LineState<>cLineStateNone then
+      DoPaintGutterBandBG(C,
+        FGutterBandStates,
+        FColorOfStates[LineState],
+        ARect.Top,
+        ARect.Bottom,
+        false);
+  end;
+
+  //gutter band: separator
+  if FGutter[FGutterBandSeparator].Visible then
+    DoPaintGutterBandBG(C, FGutterBandSeparator, Colors.GutterSeparatorBG, ARect.Top, ARect.Bottom, false);
+
+  //gutter band: empty indent
+  if FGutter[FGutterBandEmpty].Visible then
+    DoPaintGutterBandBG(C, FGutterBandEmpty, FColorBG, ARect.Top, ARect.Bottom, false);
+end;
+
 
 function TATSynEdit.GetMinimapSelTop: integer;
 begin
@@ -3531,19 +3800,20 @@ begin
   Result:= (Red(N)<cMax) and (Green(N)<cMax) and (Blue(N)<cMax);
 end;
 
-{$ifdef use_bg}
-procedure TATSynEdit.DoPaintMinimapSelTo_BGRA(C: TBGRABitmap);
+procedure TATSynEdit.DoPaintMinimapSelToBGRABitmap;
 var
+  C: TBGRABitmap;
   R: TRect;
   rColor: TBGRAPixel;
 begin
+  C:= FMinimapBmp;
   if FMinimapShowSelAlways or FCursorOnMinimap then
   begin
     GetRectMinimapSel(R);
     OffsetRect(R, -FRectMinimap.Left, -FRectMinimap.Top);
 
     // https://forum.lazarus.freepascal.org/index.php/topic,51383.msg377195.html#msg377195
-    if _IsColorDark(Colors.TextBG) then
+    if _IsColorDark(FColorBG) then
       rColor.FromRGB(255, 255, 255, FMinimapSelColorChange*255 div 100)
     else
       rColor.FromRGB(0, 0, 0, FMinimapSelColorChange*255 div 100);
@@ -3563,40 +3833,11 @@ begin
     C.DrawVertLine(0, 0, FRectMinimap.Height, rColor);
   end;
 end;
-{$else}
-procedure TATSynEdit.DoPaintMinimapSelTo(C: TCanvas);
-var
-  R: TRect;
-begin
-  if FMinimapShowSelAlways or FCursorOnMinimap then
-  begin
-    GetRectMinimapSel(R);
-    //if IntersectRect(R, R, FRectMinimap) then
-    begin
-      CanvasInvertRect(C, R, Colors.MinimapSelBG);
-      if FMinimapShowSelBorder then
-      begin
-        C.Pen.Color:= Colors.MinimapBorder;
-        C.Brush.Style:= bsClear;
-        C.Rectangle(R);
-        C.Brush.Style:= bsSolid;
-      end;
-    end;
-  end;
 
-  if Colors.MinimapBorder<>clNone then
-  begin
-    C.Pen.Color:= Colors.MinimapBorder;
-    CanvasLineVert(C, FRectMinimap.Left-1, FRectMinimap.Top, FRectMinimap.Bottom);
-  end;
-end;
-{$endif}
-
-procedure TATSynEdit.DoPaintMinimapTo(C: TCanvas);
+procedure TATSynEdit.DoPaintMinimapAllToBGRABitmap;
 begin
-  {$ifdef debug_fps}
-  FTickMinimap:= GetTickCount64;
-  {$endif}
+  if OptEditorDebugTiming then
+    FTickMinimap:= GetTickCount64;
 
   FScrollHorzMinimap.Clear;
   FScrollVertMinimap.Clear;
@@ -3604,29 +3845,14 @@ begin
   FScrollVertMinimap.NPos:= GetMinimapScrollPos;
   FScrollVertMinimap.NPosLast:= MaxInt div 2;
 
-  {$ifdef use_bg}
-  FFastBmp.SetSize(FRectMinimap.Width, FRectMinimap.Height);
-  FFastBmp.Fill(FColorBG);
-  {$endif}
+  DoPaintMinimapTextToBGRABitmap(FRectMinimap, FCharSizeMinimap, FScrollHorzMinimap, FScrollVertMinimap);
+  DoPaintMinimapSelToBGRABitmap;
 
-  DoPaintTextTo(C, FRectMinimap, FCharSizeMinimap, false, false, FScrollHorzMinimap, FScrollVertMinimap, -1);
-
-  {$ifdef use_bg}
-  DoPaintMinimapSelTo_BGRA(FFastBmp);
-  {$else}
-  DoPaintMinimapSelTo(C);
-  {$endif}
-
-  {$ifdef use_bg}
-  FFastBmp.Draw(C, FRectMinimap.Left, FRectMinimap.Top);
-  {$endif}
-
-  {$ifdef debug_fps}
-  FTickMinimap:= GetTickCount64-FTickMinimap;
-  {$endif}
+  if OptEditorDebugTiming then
+    FTickMinimap:= GetTickCount64-FTickMinimap;
 end;
 
-procedure TATSynEdit.DoPaintMicromapTo(C: TCanvas);
+procedure TATSynEdit.DoPaintMicromap(C: TCanvas);
 begin
   if Assigned(FOnDrawMicromap) then
     FOnDrawMicromap(Self, C, FRectMicromap)
@@ -3638,7 +3864,7 @@ begin
 end;
 
 
-procedure TATSynEdit.DoPaintGapTo(C: TCanvas; const ARect: TRect; AGap: TATGapItem);
+procedure TATSynEdit.DoPaintGap(C: TCanvas; const ARect: TRect; AGap: TATGapItem);
 var
   RHere, RBmp: TRect;
   NColor: TColor;
@@ -3666,8 +3892,6 @@ begin
 end;
 
 procedure TATSynEdit.DoPaintMarginLineTo(C: TCanvas; AX, AWidth: integer; AColor: TColor);
-var
-  XFrom, XTo, X: integer;
 begin
   if (AX>=FRectMain.Left) and (AX<FRectMain.Right) then
   begin
@@ -3676,7 +3900,7 @@ begin
   end;
 end;
 
-procedure TATSynEdit.DoPaintMarginsTo(C: TCanvas);
+procedure TATSynEdit.DoPaintMargins(C: TCanvas);
   //
   function PosX(NMargin: integer): integer; inline;
   begin
@@ -3777,10 +4001,15 @@ function TATSynEdit.GetLineTop: integer;
 var
   N: integer;
 begin
+  if FLineTopTodo>0 then
+    exit(FLineTopTodo);
   Result:= 0;
-  N:= Max(0, FScrollVert.NPos);
-  if FWrapInfo.IsIndexValid(N) then
-    Result:= FWrapInfo[N].NLineIndex;
+  if Assigned(FWrapInfo) and (FWrapInfo.Count>0) then
+  begin
+    N:= Max(0, FScrollVert.NPos);
+    if FWrapInfo.IsIndexValid(N) then
+      Result:= FWrapInfo[N].NLineIndex;
+  end;
 end;
 
 function TATSynEdit.GetColumnLeft: integer;
@@ -3840,16 +4069,16 @@ begin
   FScrollbarHorz.Update;
   FScrollbarHorz.OnChange:= @OnNewScrollbarHorzChanged;
 
-  FCaretPropsNormal:= TATCaretProps.Create;
-  FCaretPropsOverwrite:= TATCaretProps.Create;
-  FCaretPropsReadonly:= TATCaretProps.Create;
+  FCaretShapeNormal:= TATCaretShape.Create;
+  FCaretShapeOverwrite:= TATCaretShape.Create;
+  FCaretShapeReadonly:= TATCaretShape.Create;
 
-  FCaretPropsNormal.Width:= 2;
-  FCaretPropsNormal.Height:= -100;
-  FCaretPropsOverwrite.Width:= -100;
-  FCaretPropsOverwrite.Height:= -100;
-  FCaretPropsReadonly.Width:= -100;
-  FCaretPropsReadonly.Height:= 2;
+  FCaretShapeNormal.Width:= 2;
+  FCaretShapeNormal.Height:= -100;
+  FCaretShapeOverwrite.Width:= -100;
+  FCaretShapeOverwrite.Height:= -100;
+  FCaretShapeReadonly.Width:= -100;
+  FCaretShapeReadonly.Height:= 2;
 
   FWantTabs:= true;
   FWantReturns:= true;
@@ -3858,7 +4087,6 @@ begin
 
   FCarets:= TATCarets.Create;
   FCarets.Add(0, 0);
-  FCarets.OnCaretChanged:= @DoCaretsOnChanged;
 
   FCaretShowEnabled:= false; //code sets it On in DoEnter
   FCaretShown:= false;
@@ -3874,21 +4102,18 @@ begin
   FMarkedRange:= nil;
   FDimRanges:= nil;
   FHotspots:= nil;
-  FAdapterCache:= TATAdapterHiliteCache.Create;
   FLinkCache:= TATLinkCache.Create;
 
-  {$ifdef use_bg}
-  FFastBmp:= TBGRABitmap.Create;
-  {$endif}
+  FMinimapBmp:= TBGRABitmap.Create;
 
   {$ifdef windows}
   FAdapterIME:= TATAdapterIMEStandard.Create;
   {$endif}
 
   FPaintLocked:= 0;
-  FPaintFlags:= [cPaintUpdateBitmap];
+  FPaintFlags:= [cIntFlagBitmap];
 
-  FColors:= TATSynEditColors.Create;
+  FColors:= TATEditorColors.Create;
   InitDefaultColors(FColors);
   InitEditorMouseActions(FMouseActions);
 
@@ -3899,31 +4124,44 @@ begin
   FCursorMinimap:= crDefault;
   FCursorMicromap:= crDefault;
 
+  FTimerDelayedParsing:= TTimer.Create(Self);
+  FTimerDelayedParsing.Enabled:= false;
+  FTimerDelayedParsing.Interval:= 300;
+  FTimerDelayedParsing.OnTimer:= @TimerDelayedParsingTick;
+
   FTimerIdle:= TTimer.Create(Self);
   FTimerIdle.Enabled:= false;
   FTimerIdle.OnTimer:=@TimerIdleTick;
 
   FTimerBlink:= TTimer.Create(Self);
+  FTimerBlink.Enabled:= false;
   SetCaretBlinkTime(cInitCaretBlinkTime);
   FTimerBlink.OnTimer:= @TimerBlinkTick;
-  FTimerBlink.Enabled:= false; //true;
 
   FTimerScroll:= TTimer.Create(Self);
+  FTimerScroll.Enabled:= false;
   FTimerScroll.Interval:= cInitTimerAutoScroll;
   FTimerScroll.OnTimer:= @TimerScrollTick;
-  FTimerScroll.Enabled:= false;
 
   FTimerNiceScroll:= TTimer.Create(Self);
+  FTimerNiceScroll.Enabled:= false;
   FTimerNiceScroll.Interval:= cInitTimerNiceScroll;
   FTimerNiceScroll.OnTimer:= @TimerNiceScrollTick;
-  FTimerNiceScroll.Enabled:= false;
 
   FBitmap:= Graphics.TBitmap.Create;
   FBitmap.PixelFormat:= pf24bit;
-  FBitmap.Width:= cInitBitmapWidth;
-  FBitmap.Height:= cInitBitmapHeight;
+  FBitmap.SetSize(cInitBitmapWidth, cInitBitmapHeight);
 
   FOptUndoLimit:= cInitUndoLimit;
+  FOptUndoIndentVert:= cInitUndoIndentVert;
+  FOptUndoIndentHorz:= cInitUndoIndentHorz;
+  FOptUndoMaxCarets:= cInitUndoMaxCarets;
+  FOptUndoGrouped:= true;
+  FOptUndoPause:= cInitUndoPause;
+  FOptUndoPause2:= cInitUndoPause2;
+  FOptUndoPauseHighlightLine:= cInitUndoPauseHighlightLine;
+  FOptUndoForCaretJump:= cInitUndoForCaretJump;
+
   FStringsExternal:= nil;
   FStringsInt:= TATStrings.Create(FOptUndoLimit);
   FStringsInt.OnGetCaretsArray:= @GetCaretsArray;
@@ -3931,7 +4169,10 @@ begin
   FStringsInt.OnSetCaretsArray:= @SetCaretsArray;
   FStringsInt.OnSetMarkersArray:= @SetMarkersArray;
   FStringsInt.OnProgress:= @DoStringsOnProgress;
-  FStringsInt.OnChange:= @DoStringsOnChange;
+  FStringsInt.OnChangeEx:= @DoStringsOnChangeEx;
+  FStringsInt.OnChangeLog:= @DoStringsOnChangeLog;
+  FStringsInt.OnUndoBefore:= @DoStringsOnUndoBefore;
+  FStringsInt.OnUndoAfter:= @DoStringsOnUndoAfter;
 
   FFold:= TATSynRanges.Create;
   FFoldStyle:= cInitFoldStyle;
@@ -3943,25 +4184,36 @@ begin
 
   FWrapInfo:= TATWrapInfo.Create;
   FWrapInfo.StringsObj:= FStringsInt;
+  FWrapInfo.WrapColumn:= cInitMarginRight;
 
   FWrapTemps:= TATWrapItems.Create;
   FWrapUpdateNeeded:= true;
   FWrapMode:= cInitWrapMode;
-  FWrapColumn:= cInitMarginRight;
   FWrapIndented:= true;
   FWrapAddSpace:= 1;
   FWrapEnabledForMaxLines:= cInitWrapEnabledForMaxLines;
 
   FMicromap:= TATMicromap.Create;
+  FMicromapVisible:= cInitMicromapVisible;
+  FMicromapScaleDiv:= 1;
+  FMicromapShowForMinCount:= cInitMicromapShowForMinCount;
 
   FOverwrite:= false;
   FTabSize:= cInitTabSize;
   FMarginRight:= cInitMarginRight;
   SetLength(FMarginList, 0);
   FFoldedMarkList:= nil;
+
+  FOptInputNumberOnly:= false;
+  FOptInputNumberAllowNegative:= cInitInputNumberAllowNegative;
+  FOptMaskChar:= cInitMaskChar;
+  FOptMaskCharUsed:= false;
+  FOptScrollAnimationSteps:= cInitScrollAnimationSteps;
+  FOptScrollAnimationSleep:= cInitScrollAnimationSleep;
   FOptIdleInterval:= cInitIdleInterval;
 
-  FOptAutoCloseBrackets:= '([{';
+  FOptAutoPairForMultiCarets:= cInitAutoPairForMultiCarets;
+  FOptAutoPairChars:= '([{';
   FOptAutocompleteAutoshowCharCount:= 0;
   FOptAutocompleteTriggerChars:= '';
   FOptAutocompleteCommitChars:= ' ,;/\''"';
@@ -3996,6 +4248,7 @@ begin
   FOptGutterShowFoldLinesForCaret:= true;
   FOptGutterIcons:= cGutterIconsPlusMinus;
 
+  FGutterDecorAlignment:= taCenter;
   FGutterBandBookmarks:= 0;
   FGutterBandNumbers:= 1;
   FGutterBandStates:= 2;
@@ -4023,19 +4276,20 @@ begin
   FOptNumbersStyle:= cInitNumbersStyle;
   FOptNumbersShowFirst:= true;
   FOptNumbersShowCarets:= false;
-  FOptNumbersSkippedChar:= '.';
   FOptNumbersIndentPercents:= cInitNumbersIndentPercents;
 
-  FOptBorderWidth:= 0;
-  FOptBorderWidthFocused:= 0;
+  FOptBorderVisible:= cInitBorderVisible;
+  FOptBorderWidth:= cInitBorderWidth;
+  FOptBorderWidthFocused:= cInitBorderWidthFocused;
   FOptBorderFocusedActive:= false;
 
   FOptRulerVisible:= true;
-  FOptRulerNumeration:= cRulerNumeration_0_10_20;
+  FOptRulerNumeration:= cInitRulerNumeration;
   FOptRulerHeightPercents:= cSizeRulerHeightPercents;
   FOptRulerMarkSizeCaret:= cSizeRulerMarkCaret;
   FOptRulerMarkSizeSmall:= cSizeRulerMarkSmall;
   FOptRulerMarkSizeBig:= cSizeRulerMarkBig;
+  FOptRulerMarkForAllCarets:= false;
   FOptRulerFontSizePercents:= 80;
   FOptRulerTopIndentPercents:= 0;
 
@@ -4050,10 +4304,7 @@ begin
   FMinimapTooltipVisible:= cInitMinimapTooltipVisible;
   FMinimapTooltipLinesCount:= cInitMinimapTooltipLinesCount;
   FMinimapTooltipWidthPercents:= cInitMinimapTooltipWidthPercents;
-  FMinimapCachedPainting:= true;
   FMinimapHiliteLinesWithSelection:= true;
-
-  FMicromapVisible:= cInitMicromapVisible;
 
   FCharSpacingText:= Point(0, cInitSpacingText);
   FCharSizeMinimap:= Point(1, 2);
@@ -4063,8 +4314,7 @@ begin
   FOptScrollSmooth:= true;
   FOptScrollIndentCaretHorz:= 10;
   FOptScrollIndentCaretVert:= 0;
-  FOptUndoIndentVert:= cInitUndoIndentVert;
-  FOptUndoIndentHorz:= cInitUndoIndentHorz;
+
   FOptScrollbarsNew:= false;
   FOptScrollbarHorizontalAddSpace:= cInitScrollbarHorzAddSpace;
   FOptScrollLineCommandsKeepCaretOnScreen:= true;
@@ -4074,7 +4324,6 @@ begin
   FOptShowURLsRegex:= cUrlRegexInitial;
   FOptShowDragDropMarker:= true;
 
-  FOptUndoMaxCarets:= cInitUndoMaxCarets;
   FOptMaxLineLenToTokenize:= cInitMaxLineLenToTokenize;
   FOptMinLineLenToCalcURL:= cInitMinLineLenToCalcURL;
   FOptMaxLineLenToCalcURL:= cInitMaxLineLenToCalcURL;
@@ -4100,6 +4349,7 @@ begin
   FOptKeyBackspaceGoesToPrevLine:= true;
   FOptKeyPageKeepsRelativePos:= true;
   FOptKeyUpDownNavigateWrapped:= true;
+  FOptKeyUpDownAllowToEdge:= false;
   FOptKeyHomeEndNavigateWrapped:= true;
   FOptKeyUpDownKeepColumn:= true;
 
@@ -4163,7 +4413,6 @@ begin
   FOptIndentSize:= 2;
   FOptIndentKeepsAlign:= true;
   FOptIndentMakesWholeLinesSelection:= false;
-  FOptUndoGrouped:= true;
   FOptSavingForceFinalEol:= false;
   FOptSavingTrimSpaces:= false;
   FOptShowScrollHint:= false;
@@ -4182,6 +4431,7 @@ begin
   FOptZebraActive:= false;
   FOptZebraStep:= 2;
   FOptZebraAlphaBlend:= cInitZebraAlphaBlend;
+  FOptDimUnfocusedBack:= cInitDimUnfocusedBack;
 
   ClearMouseDownVariables;
   FMouseNiceScrollPos:= Point(0, 0);
@@ -4193,6 +4443,7 @@ begin
   FLastTextCmd:= 0;
   FLastTextCmdText:= '';
   FLastCommandChangedText:= false;
+  FLastCommandDelayedParsingOnLine:= MaxInt;
   FLastHotspot:= -1;
 
   FScrollVert.Clear;
@@ -4223,7 +4474,21 @@ end;
 
 destructor TATSynEdit.Destroy;
 begin
+  if Assigned(FMinimapThread) then
+  begin
+    FMinimapThread.Terminate;
+    FEventMapStart.SetEvent;
+    if not FMinimapThread.Finished then
+      FMinimapThread.WaitFor;
+    FreeAndNil(FMinimapThread);
+  end;
+  if Assigned(FEventMapStart) then
+    FreeAndNil(FEventMapStart);
+  if Assigned(FEventMapDone) then
+    FreeAndNil(FEventMapDone);
   FAdapterHilite:= nil;
+  if Assigned(FMinimapTooltipBitmap) then
+    FreeAndNil(FMinimapTooltipBitmap);
   if Assigned(FRegexLinks) then
     FreeAndNil(FRegexLinks);
   if Assigned(FAdapterIME) then
@@ -4233,17 +4498,16 @@ begin
     FreeAndNil(FHintWnd);
   if Assigned(FMenuStd) then
     FreeAndNil(FMenuStd);
-  DoPaintModeStatic;
+  TimerBlinkDisable;
   if Assigned(FFoldedMarkList) then
   begin
     FFoldedMarkList.Clear;
     FreeAndNil(FFoldedMarkList);
   end;
-  {$ifdef use_bg}
-  FreeAndNil(FFastBmp);
-  {$endif}
+  FreeAndNil(FMinimapBmp);
   FreeAndNil(FMicromap);
   FreeAndNil(FFold);
+  FreeAndNil(FTimerDelayedParsing);
   FreeAndNil(FTimerNiceScroll);
   FreeAndNil(FTimerScroll);
   FreeAndNil(FTimerBlink);
@@ -4268,50 +4532,42 @@ begin
   FreeAndNil(FBitmap);
   FreeAndNil(FColors);
   FreeAndNil(FLinkCache);
-  FreeAndNil(FAdapterCache);
   FreeAndNil(FFontItalic);
   FreeAndNil(FFontBold);
   FreeAndNil(FFontBoldItalic);
-  FreeAndNil(FCaretPropsNormal);
-  FreeAndNil(FCaretPropsOverwrite);
-  FreeAndNil(FCaretPropsReadonly);
+  FreeAndNil(FCaretShapeNormal);
+  FreeAndNil(FCaretShapeOverwrite);
+  FreeAndNil(FCaretShapeReadonly);
   inherited;
 end;
 
-procedure TATSynEdit.Update(
-  AUpdateWrapInfo: boolean = false;
-  AUpdateCaretsCoords: boolean = true);
+procedure TATSynEdit.Update(AUpdateWrapInfo: boolean=false);
 begin
   UpdateCursor;
 
   if AUpdateWrapInfo then
-  begin
     FWrapUpdateNeeded:= true;
-    ////UpdateWrapInfo; //performed later
-  end;
-  if AUpdateCaretsCoords then
-    Include(FPaintFlags, cPaintUpdateCaretsCoords);
+
   Invalidate;
 end;
 
 procedure TATSynEdit.SetFocus;
 begin
-  LCLIntf.SetFocus(Handle);
+  if HandleAllocated then
+    LCLIntf.SetFocus(Handle);
 end;
 
 procedure TATSynEdit.GetClientSizes(out W, H: integer);
-var
-  R: TRect;
 begin
-  R:= inherited ClientRect;
+  W:= Width;
+  H:= Height;
+  if ModeOneLine then exit;
 
-  W:= R.Width;
   //if FScrollbarVert.Visible then
   if FOptScrollbarsNew then //better check this instead of FScrollbarVert.Visible
     Dec(W, FScrollbarVert.Width);
   if W<1 then W:= 1;
 
-  H:= R.Height;
   if FScrollbarHorz.Visible then
     Dec(H, FScrollbarHorz.Height);
   if H<1 then H:= 1;
@@ -4319,12 +4575,12 @@ end;
 
 procedure TATSynEdit.LoadFromFile(const AFilename: string; AKeepScroll: boolean=false);
 begin
-  DoPaintModeStatic;
+  TimerBlinkDisable;
 
   FCarets.Clear;
   FCarets.Add(0, 0);
 
-  Strings.Clear;
+  Strings.Clear(false{AWithEvent});
   FWrapInfo.Clear;
   FWrapUpdateNeeded:= true;
 
@@ -4344,8 +4600,10 @@ begin
   end;
 
   Update;
-  DoPaintModeBlinking;
-  DoEventChange(false); //calling OnChange makes almost no sense on opening file
+  TimerBlinkEnable;
+
+  DoEventChange(0, false{AllowOnChange}); //calling OnChange makes almost no sense on opening file
+
   //DoEventCarets; //calling OnChangeCaretPos makes little sense on opening file
 end;
 
@@ -4459,7 +4717,6 @@ begin
     OptWrapMode:= cWrapOff;
     OptScrollStyleHorz:= aessHide;
     OptScrollStyleVert:= aessHide;
-    OptAllowReadOnly:= false;
     OptMouseMiddleClickAction:= mcaNone;
     OptMouseDragDrop:= false;
     OptMarginRight:= 1000;
@@ -4479,8 +4736,6 @@ begin
 end;
 
 procedure TATSynEdit.SetLineTop(AValue: integer);
-var
-  NFrom, NTo, i: integer;
 begin
   if not HandleAllocated then
   begin
@@ -4500,39 +4755,52 @@ begin
   //this is required for restoring LineTop for n tabs, on opening CudaText.
   UpdateWrapInfo;
 
-  if FWrapInfo.Count=0 then
+  DoScroll_LineTop(AValue, true);
+end;
+
+procedure TATSynEdit.DoScroll_SetPos(var AScrollInfo: TATEditorScrollInfo; APos: integer);
+begin
+  AScrollInfo.NPos:= APos;
+  //must update other info in AScrollInfo
+  UpdateScrollbars(true);
+end;
+
+procedure TATSynEdit.DoScroll_LineTop(ALine: integer; AUpdate: boolean);
+var
+  NFrom, NTo, i: integer;
+begin
+  if FWrapInfo=nil then exit;
+
+  if (ALine<=0) or (FWrapInfo.Count=0) then
   begin
     FScrollVert.SetZero;
-    Update;
+    if AUpdate then Update;
     Exit
   end;
 
   //find exact match
-  FWrapInfo.FindIndexesOfLineNumber(AValue, NFrom, NTo);
+  FWrapInfo.FindIndexesOfLineNumber(ALine, NFrom, NTo);
   if NFrom>=0 then
   begin
-    FScrollVert.NPos:= NFrom;
-    UpdateScrollbars(true);
-    Update;
+    DoScroll_SetPos(FScrollVert, NFrom);
+    if AUpdate then Update;
     Exit
   end;
 
   //find approx match
   for i:= 0 to FWrapInfo.Count-1 do
     with FWrapInfo[i] do
-      if NLineIndex>=AValue then
+      if NLineIndex>=ALine then
       begin
-        FScrollVert.NPos:= i;
-        UpdateScrollbars(true);
-        Update;
+        DoScroll_SetPos(FScrollVert, i);
+        if AUpdate then Update;
         Exit
       end;
 end;
 
 procedure TATSynEdit.SetColumnLeft(AValue: integer);
 begin
-  FScrollHorz.NPos:= AValue;
-  UpdateScrollbars(true);
+  DoScroll_SetPos(FScrollHorz, AValue);
   Update;
 end;
 
@@ -4577,33 +4845,34 @@ end;
 function TATSynEdit.GetPageLines: integer;
 begin
   case FOptKeyPageUpDownSize of
-    cPageSizeFull: Result:= GetVisibleLines;
-    cPageSizeFullMinus1: Result:= GetVisibleLines-1;
-    cPageSizeHalf: Result:= GetVisibleLines div 2;
-    else
-      raise Exception.Create('Unknown pagesize');
+    cPageSizeFull:
+      Result:= GetVisibleLines;
+    cPageSizeFullMinus1:
+      Result:= GetVisibleLines-1;
+    cPageSizeHalf:
+      Result:= GetVisibleLines div 2;
   end;
 end;
 
-procedure TATSynEdit.UpdateAdapterCacheSize;
+procedure TATSynEdit.DoPaintAll(C: TCanvas; ALineFrom: integer);
 var
-  N: integer;
+  NColorOther: TColor;
 begin
-  if FMinimapVisible then
-    N:= Max(GetVisibleLines, GetVisibleLinesMinimap)+1
-  else
-    N:= GetVisibleLines+1;
-  FAdapterCache.MaxSize:= N;
-end;
+  UpdateInitialVars(C);
 
-procedure TATSynEdit.DoPaintAllTo(C: TCanvas; AFlags: TATSynPaintFlags; ALineFrom: integer);
-var
-  NCaretX, NWidth: integer;
-begin
   if Enabled then
   begin
     FColorFont:= Colors.TextFont;
     FColorBG:= Colors.TextBG;
+    if FOptDimUnfocusedBack<>0 then
+      if not _IsFocused then
+      begin
+        if FOptDimUnfocusedBack>0 then
+          NColorOther:= clBlack
+        else
+          NColorOther:= clWhite;
+        FColorBG:= ColorBlend(NColorOther, FColorBG, Abs(FOptDimUnfocusedBack));
+      end;
   end
   else
   begin
@@ -4612,44 +4881,48 @@ begin
   end;
 
   Inc(FPaintCounter);
+  FVisibleColumns:= GetVisibleColumns;
   FCaretShown:= false;
   Carets.GetSelections(FSel);
 
-  DoPaintMainTo(C, ALineFrom);
+  DoPaintMain(C, ALineFrom);
 
-  if cPaintUpdateCaretsCoords in AFlags then
-    UpdateCaretsCoords;
+  UpdateCaretsCoords;
 
   if Carets.Count>0 then
   begin
-    NCaretX:= Carets[0].CoordX;
-    NWidth:= EditorScale(1);
     if FOptShowCurColumn then
-      DoPaintMarginLineTo(C, NCaretX, NWidth, Colors.MarginCaret);
-    if FOptRulerVisible and (FOptRulerMarkSizeCaret>0) then
-      DoPaintRulerCaretMark(C, NCaretX);
+      DoPaintMarginLineTo(C, Carets[0].CoordX, EditorScale(1), Colors.MarginCaret);
+
+    DoPaintRulerCaretMarks(C);
   end;
 
   DoPaintMarkersTo(C);
 end;
 
-function TATSynEdit.DoPaint(AFlags: TATSynPaintFlags; ALineFrom: integer): boolean;
+function TATSynEdit.DoPaint(ALineFrom: integer): boolean;
 //gets True if one of scrollbars changed Visible state
 begin
+  if csLoading in ComponentState then
+    exit(false);
+
   UpdateTabHelper;
 
   if DoubleBuffered then
   begin
     if Assigned(FBitmap) then
-      if cPaintUpdateBitmap in AFlags then
+      if cIntFlagBitmap in FPaintFlags then
       begin
         FBitmap.BeginUpdate(true);
-        DoPaintAllTo(FBitmap.Canvas, AFlags, ALineFrom);
-        FBitmap.EndUpdate();
+        try
+          DoPaintAll(FBitmap.Canvas, ALineFrom);
+        finally
+          FBitmap.EndUpdate();
+        end;
       end;
   end
   else
-    DoPaintAllTo(Canvas, AFlags, ALineFrom);
+    DoPaintAll(Canvas, ALineFrom);
 
   Result:= UpdateScrollbars(false);
 end;
@@ -4667,7 +4940,7 @@ var
   Bmp: TGraphic;
 begin
   C.Brush.Color:= Colors.TextBG;
-  C.FillRect(ClientRect);
+  C.FillRect(Rect(0, 0, Width, Height));
 
   if Strings.ProgressKind<>cStringsProgressSaving then
     Bmp:= cBitmapWait
@@ -4702,19 +4975,28 @@ var
 begin
   if not HandleAllocated then exit;
 
-  if not FPaintStarted then
-  begin
-    FPaintStarted:= true;
+  FPaintWorking:= true;
+  try
+    if cIntFlagResize in FPaintFlags then
+    begin
+      Exclude(FPaintFlags, cIntFlagResize);
+      if DoubleBuffered then
+        if Assigned(FBitmap) then
+          BitmapResizeBySteps(FBitmap, Width, Height);
+    end;
+
+    NLine:= -1;
     if FLineTopTodo>0 then
     begin
       NLine:= FLineTopTodo;
       FLineTopTodo:= 0;
-      SetLineTop(NLine);
-      exit;
     end;
-  end;
 
-  PaintEx(-1);
+    FPaintStarted:= true;
+    PaintEx(NLine);
+  finally
+    FPaintWorking:= false;
+  end;
 end;
 
 procedure TATSynEdit.PaintEx(ALineNumber: integer);
@@ -4730,31 +5012,31 @@ begin
   if DoubleBuffered then
     if not Assigned(FBitmap) then exit;
 
-  {$ifdef debug_fps}
-  FTickAll:= GetTickCount64;
-  FMissMain:= 0;
-  FMissMinimap:= 0;
-  {$endif}
+  if OptEditorDebugTiming then
+  begin
+    FTickAll:= GetTickCount64;
+    FTickMinimap:= 0;
+  end;
 
   //if scrollbars shown, paint again
-  if DoPaint(FPaintFlags, ALineNumber) then
-    DoPaint(FPaintFlags, ALineNumber);
-  Exclude(FPaintFlags, cPaintUpdateBitmap);
+  if DoPaint(ALineNumber) then
+    DoPaint(ALineNumber);
+  Exclude(FPaintFlags, cIntFlagBitmap);
 
-    if DoubleBuffered then
-    //buf mode: timer tick don't give painting of whole bitmap
-    //(cPaintUpdateBitmap off)
-    begin
-      DoPaintCarets(FBitmap.Canvas, true);
-    end
-    else
-    //non-buf mode: timer tick clears whole canvas first.
-    //we already painted bitmap above,
-    //and now we invert carets or dont invert (use FCaretAllowNextBlink)
-    begin
-      if not FCaretBlinkEnabled or FCaretAllowNextBlink then
-        DoPaintCarets(Canvas, true);
-    end;
+  if DoubleBuffered then
+  //buf mode: timer tick don't give painting of whole bitmap
+  //(cIntFlagBitmap off)
+  begin
+    DoPaintCarets(FBitmap.Canvas, true);
+  end
+  else
+  //non-buf mode: timer tick clears whole canvas first.
+  //we already painted bitmap above,
+  //and now we invert carets or dont invert (use FCaretAllowNextBlink)
+  begin
+    if not FCaretBlinkEnabled or FCaretAllowNextBlink then
+      DoPaintCarets(Canvas, true);
+  end;
 
   if DoubleBuffered then
   begin
@@ -4765,44 +5047,31 @@ begin
 
   DoPaintMarkerOfDragDrop(Canvas);
 
-  {$ifdef debug_fps}
-  FTickAll:= GetTickCount64-FTickAll;
-  DoPaintFPS(Canvas);
-  {$endif}
+  if OptEditorDebugTiming then
+  begin
+    FTickAll:= GetTickCount64-FTickAll;
+    DoPaintTiming(Canvas);
+  end;
 end;
 
 procedure TATSynEdit.Resize;
-const
-  cStep = 200; //resize bitmap by N pixels step
-var
-  SizeX, SizeY: integer;
 begin
   inherited;
 
-  if DoubleBuffered then
-    if Assigned(FBitmap) then
-    begin
-      SizeX:= (Width div cStep + 1)*cStep;
-      SizeY:= (Height div cStep + 1)*cStep;
-      if (SizeX>FBitmap.Width) or (SizeY>FBitmap.Height) then
-      begin
-        FBitmap.SetSize(SizeX, SizeY);
-        FBitmap.FreeImage; //recommended, else seen black bitmap on bigsize
-      end;
-    end;
+  //avoid setting FLineTopTodo, which breaks the v-scroll-pos, if huge line is wrapped
+  //and v-scroll-pos is in the middle of this line
+  if (Width=FLastControlWidth) and
+    (Height=FLastControlHeight) then exit;
+  FLastControlWidth:= Width;
+  FLastControlHeight:= Height;
 
+  FLineTopTodo:= GetLineTop;
+
+  Include(FPaintFlags, cIntFlagResize);
   if FWrapMode in [cWrapOn, cWrapAtWindowOrMargin] then
-  begin
     FWrapUpdateNeeded:= true;
-    Include(FPaintFlags, cPaintUpdateCaretsCoords);
-  end;
 
   if not FPaintStarted then exit;
-
-  {
-  Include(FPaintFlags, cPaintUpdateBitmap);
-  PaintEx(LineTop);
-  }
   Invalidate;
 end;
 
@@ -4861,7 +5130,7 @@ begin
   NIndex:= Strings.Bookmarks.Find(ALine);
   if NIndex<0 then exit;
 
-  S:= Strings.Bookmarks[NIndex].Data.Hint;
+  S:= Strings.Bookmarks[NIndex]^.Data.Hint;
   if S='' then
     begin DoHintHide; exit end;
 
@@ -4881,7 +5150,7 @@ begin
     FHintWnd.Hide;
 end;
 
-procedure TATSynEdit.UpdateScrollInfoFromSmoothPos(var AInfo: TATSynScrollInfo; APos: integer);
+procedure TATSynEdit.UpdateScrollInfoFromSmoothPos(var AInfo: TATEditorScrollInfo; APos: integer);
 //Note: for vertical bar, NPos=-1 means than we are before the first line, over top gap
 var
   NPos, NPixels, NLineIndex, NCharSize: integer;
@@ -4955,7 +5224,7 @@ begin
   end;
 end;
 
-function TATSynEdit.UpdateScrollInfoFromMessage(var Info: TATSynScrollInfo; const Msg: TLMScroll): boolean;
+function TATSynEdit.UpdateScrollInfoFromMessage(var Info: TATEditorScrollInfo; const Msg: TLMScroll): boolean;
 begin
   if Info.NMax<Info.NPage then
   begin
@@ -5025,7 +5294,6 @@ end;
 
 procedure TATSynEdit.WMVScroll(var Msg: TLMVScroll);
 begin
-  Include(FPaintFlags, cPaintUpdateCaretsCoords);
   UpdateScrollInfoFromMessage(FScrollVert, Msg);
   Invalidate;
 end;
@@ -5064,7 +5332,6 @@ end;
 
 procedure TATSynEdit.WMHScroll(var Msg: TLMHScroll);
 begin
-  Include(FPaintFlags, cPaintUpdateCaretsCoords);
   UpdateScrollInfoFromMessage(FScrollHorz, Msg);
   Invalidate;
 end;
@@ -5072,9 +5339,9 @@ end;
 procedure TATSynEdit.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 var
   PCaret: TPoint;
-  PosDetails: TATPosDetails;
+  PosDetails: TATEditorPosDetails;
   Index: integer;
-  ActionId: TATMouseActionId;
+  ActionId: TATEditorMouseAction;
   bClickOnSelection: boolean;
   R: TRect;
 begin
@@ -5164,7 +5431,7 @@ begin
 
     if ActionId=cMouseActionClickSimple then
     begin
-      Strings.ActionAddJumpToUndo;
+      ActionAddJumpToUndo;
       Strings.SetGroupMark;
 
       FSelRect:= cRectEmpty;
@@ -5280,7 +5547,7 @@ var
   bCopySelection: boolean;
   Str: atString;
   Caret: TATCaretItem;
-  PosDetails: TATPosDetails;
+  PosDetails: TATEditorPosDetails;
   PntCaret: TPoint;
 begin
   if not OptMouseEnableAll then exit;
@@ -5300,6 +5567,7 @@ begin
       FMouseDownOnMinimap:= false;
       if not FMouseDragMinimap then
         DoMinimapClick(Y);
+      FMouseDragMinimap:= false;
     end;
     Exit
   end;
@@ -5436,13 +5704,13 @@ begin
 
   RectBm.Left:= FGutter[FGutterBandBookmarks].Left;
   RectBm.Right:= FGutter[FGutterBandBookmarks].Right;
-  RectBm.Top:= FRectMain.Top;
-  RectBm.Bottom:= FRectMain.Bottom;
+  RectBm.Top:= FRectGutter.Top;
+  RectBm.Bottom:= FRectGutter.Bottom;
 
   RectNums.Left:= FGutter[FGutterBandNumbers].Left;
   RectNums.Right:= FGutter[FGutterBandNumbers].Right;
-  RectNums.Top:= FRectMain.Top;
-  RectNums.Bottom:= FRectMain.Bottom;
+  RectNums.Top:= FRectGutter.Top;
+  RectNums.Bottom:= FRectGutter.Bottom;
 
   //if FMouseDragDropping then
   //  Cursor:= crDrag
@@ -5492,7 +5760,8 @@ var
   bOnGutter, bOnGutterNumbers, bOnGutterBookmk,
   bSelecting, bSelectingGutterNumbers: boolean;
   bMovedMinimal: boolean;
-  Details: TATPosDetails;
+  bUpdateForMinimap: boolean;
+  Details: TATEditorPosDetails;
   nIndex: integer;
   Caret: TATCaretItem;
 begin
@@ -5525,22 +5794,19 @@ begin
   //detect cursor on minimap
   if FMinimapVisible then
   begin
-    if not FMinimapShowSelAlways then
-      if bOnMinimap<>FCursorOnMinimap then
-        Invalidate;
+    bUpdateForMinimap:= false;
+    if bOnMinimap<>FCursorOnMinimap then
+      bUpdateForMinimap:= true;
     FCursorOnMinimap:= bOnMinimap;
-  end;
-
-  if bOnMinimap and FMinimapTooltipVisible then
-  begin
-    InitMinimapTooltip;
-    FMinimapTooltip.Show;
-    UpdateMinimapTooltip;
-  end
-  else
-  begin
-    if Assigned(FMinimapTooltip) then
-      FMinimapTooltip.Hide;
+    if FMinimapTooltipVisible and bOnMinimap then
+    begin
+      FMinimapTooltipEnabled:= true;
+      bUpdateForMinimap:= true;
+    end
+    else
+      FMinimapTooltipEnabled:= false;
+    if bUpdateForMinimap then
+      Update;
   end;
 
   //detect cursor on gutter
@@ -5775,8 +6041,7 @@ begin
   inherited;
   DoHintHide;
   DoHotspotsExit;
-  if Assigned(FMinimapTooltip) then
-    FMinimapTooltip.Hide;
+  FMinimapTooltipEnabled:= false;
 end;
 
 function TATSynEdit.DoMouseWheel(Shift: TShiftState; WheelDelta: integer;
@@ -5813,8 +6078,7 @@ begin
   DoHotspotsExit;
   if Assigned(FFoldedMarkTooltip) then
     FFoldedMarkTooltip.Hide;
-  if Assigned(FMinimapTooltip) then
-    FMinimapTooltip.Hide;
+  FMinimapTooltipEnabled:= false;
 
   if AForceHorz then
     Mode:= aWheelModeHoriz
@@ -5844,7 +6108,7 @@ begin
         begin
           //w/o this handler wheel works only with OS scrollbars, need with new scrollbars too
           DoScrollByDeltaInPixels(0, NSpeedY*FCharSize.Y);
-          Invalidate;
+          Update;
           Result:= true;
         end;
       end;
@@ -5962,7 +6226,7 @@ end;
 procedure TATSynEdit.DoSelect_Line_ByClick;
 var
   P: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
 begin
   P:= ScreenToClient(Mouse.CursorPos);
   if PtInRect(FRectMain, P) then
@@ -5976,19 +6240,8 @@ end;
 
 procedure TATSynEdit.Invalidate;
 begin
-  Include(FPaintFlags, cPaintUpdateBitmap);
+  Include(FPaintFlags, cIntFlagBitmap);
   inherited;
-end;
-
-procedure TATSynEdit.InvalidateHilitingCache;
-begin
-  FAdapterCache.Clear;
-end;
-
-procedure TATSynEdit.InvalidateHilitingCache(ALineIndex: integer);
-begin
-  if Assigned(FAdapterCache) then
-    FAdapterCache.DeleteForLine(ALineIndex);
 end;
 
 function TATSynEdit._IsFocused: boolean;
@@ -6020,14 +6273,14 @@ begin
   if not DoubleBuffered then
     FCaretAllowNextBlink:= not FCaretAllowNextBlink;
 
-  inherited Invalidate;
+  DoPaintCarets(Canvas, true);
 end;
 
 procedure TATSynEdit.TimerScrollTick(Sender: TObject);
 var
   nIndex: integer;
   PClient, PCaret: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
 begin
   PClient:= ScreenToClient(Mouse.CursorPos);
   PClient.X:= Max(FRectMain.Left, PClient.X);
@@ -6074,7 +6327,7 @@ procedure TATSynEdit.TimerNiceScrollTick(Sender: TObject);
 var
   Pnt: TPoint;
   Dx, Dy: integer;
-  Dir: TATDirection;
+  Dir: TATEditorDirection;
 begin
   Pnt:= ScreenToClient(Mouse.CursorPos);
   if not PtInRect(FRectMain, Pnt) then Exit;
@@ -6116,21 +6369,23 @@ end;
 
 procedure TATSynEdit.DoPaintCarets(C: TCanvas; AWithInvalidate: boolean);
 var
+  Caret: TATCaretItem;
+  CaretShape: TATCaretShape;
+  NCaretColor: TColor;
   R: TRect;
   i: integer;
-  Item: TATCaretItem;
-  CaretProps: TATCaretProps;
-  NCaretColor: TColor;
 begin
+  if csLoading in ComponentState then exit;
+  if csDestroying in ComponentState then exit;
   if not FCaretShowEnabled then exit;
 
   if ModeReadOnly then
-    CaretProps:= FCaretPropsReadonly
+    CaretShape:= FCaretShapeReadonly
   else
   if ModeOverwrite then
-    CaretProps:= FCaretPropsOverwrite
+    CaretShape:= FCaretShapeOverwrite
   else
-    CaretProps:= FCaretPropsNormal;
+    CaretShape:= FCaretShapeNormal;
 
   NCaretColor:= Colors.Caret;
   { //block was needed when we didn't have OptCaretHideUnfocused
@@ -6144,11 +6399,16 @@ begin
     NCaretColor:= Colors.TextBG xor Colors.TextFont;
     }
 
+  if FCaretBlinkEnabled then
+    FCaretShown:= not FCaretShown
+  else
+    FCaretShown:= true;
+
   for i:= 0 to FCarets.Count-1 do
   begin
-    Item:= FCarets[i];
-    R.Left:= Item.CoordX;
-    R.Top:= Item.CoordY;
+    Caret:= FCarets[i];
+    R.Left:= Caret.CoordX;
+    R.Top:= Caret.CoordY;
     R.Right:= R.Left+FCharSize.X;
     R.Bottom:= R.Top+FCharSize.Y;
 
@@ -6158,23 +6418,36 @@ begin
     if R.Left>=FRectMain.Right then Continue;
     if R.Top>=FRectMain.Bottom then Continue;
 
-    DoCaretsApplyShape(R, CaretProps, FCharSize.X, FCharSize.Y);
+    DoCaretsApplyShape(R, CaretShape, FCharSize.X, FCharSize.Y);
 
     if FCaretBlinkEnabled then
     begin
-      FCaretShown:= not FCaretShown;
+      //this block is to solve 'ghost caret on typing'
+      // https://github.com/Alexey-T/CudaText/issues/3167
+      if not FCaretShown then
+      begin
+        if Caret.OldRect.Width>0 then
+        begin
+          CanvasInvertRect(C, Caret.OldRect, NCaretColor);
+          if AWithInvalidate then
+            if not (csCustomPaint in ControlState) then //disable during Paint
+              InvalidateRect(Handle, @Caret.OldRect, false);
+        end;
+      end;
+
       CanvasInvertRect(C, R, NCaretColor);
       //if shape FrameFull, invert inner area
-      if CaretProps.EmptyInside then
+      if CaretShape.EmptyInside then
         CanvasInvertRect(C, Rect(R.Left+1, R.Top+1, R.Right-1, R.Bottom-1), NCaretColor);
     end
     else
     begin
-      FCaretShown:= true;
       //paint non-blinking caret simpler
       C.Brush.Color:= NCaretColor;
       C.FillRect(R);
     end;
+
+    Caret.OldRect:= R;
 
     if AWithInvalidate then
       if not (csCustomPaint in ControlState) then //disable during Paint
@@ -6184,7 +6457,7 @@ end;
 
 procedure TATSynEdit.DoPaintMarkerOfDragDrop(C: TCanvas);
 var
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
   P: TPoint;
   R: TRect;
 begin
@@ -6208,15 +6481,19 @@ begin
   //InvalidateRect(Handle, @R, false);
 end;
 
-procedure TATSynEdit.DoPaintModeStatic;
+procedure TATSynEdit.TimerBlinkDisable;
 begin
-  FTimerBlink.Enabled:= false;
+  if cUsePaintStatic then
+    FTimerBlink.Enabled:= false;
 end;
 
-procedure TATSynEdit.DoPaintModeBlinking;
+procedure TATSynEdit.TimerBlinkEnable;
 begin
-  FTimerBlink.Enabled:= false;
-  FTimerBlink.Enabled:= FTimersEnabled and FCaretBlinkEnabled;
+  if cUsePaintStatic then
+  begin
+    FTimerBlink.Enabled:= false;
+    FTimerBlink.Enabled:= FTimersEnabled and FCaretBlinkEnabled;
+  end;
 end;
 
 
@@ -6256,7 +6533,7 @@ procedure TATSynEdit.DoPaintSelectedLineBG(C: TCanvas;
   APointLeft, APointText: TPoint;
   const AWrapItem: TATWrapItem;
   ALineWidth: integer;
-  const AScrollHorz: TATSynScrollInfo);
+  const AScrollHorz: TATEditorScrollInfo);
 var
   NLineIndex, NPartXAfter: integer;
   NLeft, NRight, i: integer;
@@ -6345,39 +6622,81 @@ begin
 end;
 
 procedure TATSynEdit.DoPaintLineNumber(C: TCanvas; ALineIndex, ACoordTop: integer; ABand: TATGutterItem);
-var
-  Str: string;
-  Size: integer;
-  CoordX: integer;
-begin
-  Str:= DoFormatLineNumber(ALineIndex+1);
+//painting of text is slower, paint a special mark if possible
+  //
+  procedure PaintDash(W, H: integer);
+  var
+    P: TPoint;
+  begin
+    P.Y:= ACoordTop + FCharSize.Y div 2 - EditorScale(1);
 
-  //C.Font.Name:= Font.Name;
-  //C.Font.Size:= DoScaleFont(Font.Size);
-  //Size:= C.TextWidth(Str);
-  Size:= FCharSize.X*Length(Str);
+    case FOptNumbersAlignment of
+      taLeftJustify:
+        P.X:= ABand.Left + FNumbersIndent;
+      taRightJustify:
+        P.X:= ABand.Right - FNumbersIndent - FCharSize.X div 2;
+      taCenter:
+        P.X:= (ABand.Left+ABand.Right) div 2;
+    end;
 
-  case FOptNumbersAlignment of
-    taLeftJustify:
-      CoordX:= ABand.Left + FNumbersIndent;
-    taRightJustify:
-      CoordX:= ABand.Right - Size - FNumbersIndent;
-    taCenter:
-      CoordX:= (ABand.Left + ABand.Right - Size) div 2;
+    C.Brush.Color:= C.Font.Color;
+    C.FillRect(
+      P.X - W div 2,
+      P.Y,
+      P.X - W div 2 + W,
+      P.Y + H
+      );
   end;
+  //
+var
+  SText: string;
+  P: TPoint;
+  NW: integer;
+begin
+  SText:= DoFormatLineNumber(ALineIndex+1);
 
-  CanvasTextOutSimplest(C, CoordX, ACoordTop, Str);
+  case SText of
+    '':
+      exit;
+
+    '.':
+      begin
+        PaintDash(EditorScale(2), EditorScale(2));
+      end;
+
+    '-':
+      begin
+        PaintDash(FCharSize.X, EditorScale(2));
+      end;
+
+    else
+      begin
+        NW:= FCharSize.X*Length(SText);
+
+        P.Y:= ACoordTop;
+        case FOptNumbersAlignment of
+          taLeftJustify:
+            P.X:= ABand.Left + FNumbersIndent;
+          taRightJustify:
+            P.X:= ABand.Right - NW - FNumbersIndent;
+          taCenter:
+            P.X:= (ABand.Left + ABand.Right - NW) div 2;
+        end;
+
+        CanvasTextOutSimplest(C, P.X, P.Y, SText);
+      end;
+  end;
 end;
 
 
-function TATSynEdit.DoEventCommand(ACommand: integer; const AText: string): boolean; inline;
+function TATSynEdit.DoEventCommand(ACommand: integer; const AText: string): boolean;
 begin
   Result:= false;
   if Assigned(FOnCommand) then
     FOnCommand(Self, ACommand, AText, Result);
 end;
 
-procedure TATSynEdit.DoEventCommandAfter(ACommand: integer; const AText: string); inline;
+procedure TATSynEdit.DoEventCommandAfter(ACommand: integer; const AText: string);
 begin
   if Assigned(FOnCommandAfter) then
     FOnCommandAfter(Self, ACommand, AText);
@@ -6395,6 +6714,9 @@ end;
 
 procedure TATSynEdit.DoEventScroll;
 begin
+  //horizontal scroll must clear CaretItem.SavedX values
+  Carets.UpdateMemory(cCaretMem_ClearX, false);
+
   if Assigned(FAdapterHilite) then
     FAdapterHilite.OnEditorScroll(Self);
 
@@ -6402,14 +6724,22 @@ begin
     FOnScroll(Self);
 end;
 
-procedure TATSynEdit.DoEventChange(AllowOnChange: boolean=true);
+procedure TATSynEdit.DoEventChange(ALineIndex: integer; AllowOnChange: boolean);
+var
+  HandlerChangeLog: TATStringsChangeLogEvent;
 begin
   FLinkCache.Clear;
 
   if Assigned(FAdapterHilite) then
   begin
-    InvalidateHilitingCache;
     FAdapterHilite.OnEditorChange(Self);
+
+    if ALineIndex>=0 then
+    begin
+      HandlerChangeLog:= Strings.OnChangeLog;
+      if Assigned(HandlerChangeLog) then
+        HandlerChangeLog(nil, ALineIndex);
+    end;
   end;
 
   if AllowOnChange then
@@ -6484,7 +6814,7 @@ end;
 
 procedure TATSynEdit.DoScrollByDelta(ADeltaX, ADeltaY: integer);
 //
-  procedure _Delta(var AInfo: TATSynScrollInfo; ADelta: integer); inline;
+  procedure _Delta(var AInfo: TATEditorScrollInfo; ADelta: integer);
   begin
     if ADelta=0 then exit;
     with AInfo do
@@ -6503,11 +6833,11 @@ end;
 
 procedure TATSynEdit.DoScrollByDeltaInPixels(ADeltaX, ADeltaY: integer);
 //
-  procedure _Delta(var AInfo: TATSynScrollInfo; ADelta: integer); inline;
+  procedure _Delta(var AInfo: TATEditorScrollInfo; ADelta: integer);
   begin
     if ADelta=0 then exit;
     UpdateScrollInfoFromSmoothPos(AInfo,
-      Min(AInfo.SmoothPosLast, AInfo.SmoothPos + ADelta));
+      Min(AInfo.SmoothPosLast, AInfo.SmoothPos+ADelta));
   end;
 //
 begin
@@ -6619,7 +6949,7 @@ var
   bSel: boolean;
   Str: atString;
   Relation: TATPosRelation;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
 begin
   if Carets.Count<>1 then Exit; //allow only 1 caret
   Carets[0].GetRange(X1, Y1, X2, Y2, bSel);
@@ -6668,10 +6998,10 @@ begin
   DoEventChange;
 end;
 
-function TATSynEdit.IndentString: string;
+function TATSynEdit.IndentString: UnicodeString;
 begin
   if FOptTabSpaces then
-    Result:= StringOfChar(' ', FTabSize)
+    Result:= StringOfCharW(' ', FTabSize)
   else
     Result:= #9;
 end;
@@ -6694,7 +7024,7 @@ begin
   bAddIndent:=
     AUseIndentRegexRule and
     (FOptAutoIndentRegexRule<>'') and
-    SFindRegexMatch(StrPrev, FOptAutoIndentRegexRule, MatchPos, MatchLen);
+    SFindRegexMatch(StrPrev, FOptAutoIndentRegexRule{%H-}, MatchPos, MatchLen);
 
   StrIndent:= Copy(StrPrev, 1, NChars);
   NSpaces:= Length(FTabHelper.TabsToSpaces(APosY, StrIndent));
@@ -6703,16 +7033,16 @@ begin
     cIndentAsPrevLine:
       Result:= StrIndent;
     cIndentSpacesOnly:
-      Result:= StringOfChar(' ', NSpaces);
+      Result:= StringOfCharW(' ', NSpaces);
     cIndentTabsOnly:
-      Result:= StringOfChar(#9, NSpaces div FTabSize);
+      Result:= StringOfCharW(#9, NSpaces div FTabSize);
     cIndentTabsAndSpaces:
-      Result:= StringOfChar(#9, NSpaces div FTabSize) + StringOfChar(' ', NSpaces mod FTabSize);
+      Result:= StringOfCharW(#9, NSpaces div FTabSize) + StringOfCharW(' ', NSpaces mod FTabSize);
     cIndentToOpeningBracket:
       begin
         //indent like in prev line + spaces up to opening bracket
         NSpaces:= SGetIndentCharsToOpeningBracket(StrPrev);
-        Result:= StrIndent + StringOfChar(' ', NSpaces-Length(StrIndent));
+        Result:= StrIndent + StringOfCharW(' ', NSpaces-Length(StrIndent));
       end;
   end;
 
@@ -6822,17 +7152,14 @@ begin
   if NItem>=0 then
   begin
     NItem:= Max(0, NItem - GetVisibleLines div 2);
-    FScrollVert.NPos:= Min(NItem, FScrollVert.NMax);
-    UpdateScrollbars(true);
+    DoScroll_SetPos(FScrollVert, Min(NItem, FScrollVert.NMax));
     Update;
-    UpdateMinimapTooltip;
   end;
 end;
 
 procedure TATSynEdit.DoMinimapDrag(APosY: integer);
 begin
-  FScrollVert.NPos:= GetMinimap_DraggedPosToWrapIndex(APosY);
-  UpdateScrollbars(true);
+  DoScroll_SetPos(FScrollVert, GetMinimap_DraggedPosToWrapIndex(APosY));
   Update;
 end;
 
@@ -6961,7 +7288,7 @@ begin
   St:= Strings;
   if not AValue then
   begin
-    St.DoClearUndo(true);
+    St.ClearUndo(true);
     St.EnabledChangeEvents:= false;
     if Carets.Count>0 then
     begin
@@ -6972,7 +7299,7 @@ begin
   end
   else
   begin
-    St.DoClearUndo(false);
+    St.ClearUndo(false);
     St.EnabledChangeEvents:= true;
     if St.IsIndexValid(FLastLineOfSlowEvents) then
     begin
@@ -7158,14 +7485,15 @@ procedure TATSynEdit.DoPaintGutterDecor(C: TCanvas; ALine: integer; const ARect:
 var
   Decor: TATGutterDecorItem;
   Style, StylePrev: TFontStyles;
-  N: integer;
   Ext: TSize;
+  N, NText: integer;
 begin
   if FGutterDecor=nil then exit;
   N:= FGutterDecor.Find(ALine);
   if N<0 then exit;
   Decor:= FGutterDecor[N];
 
+  //paint decor text
   if Decor.Data.Text<>'' then
   begin
     C.Font.Color:= Decor.Data.TextColor;
@@ -7179,14 +7507,25 @@ begin
 
     Ext:= C.TextExtent(Decor.Data.Text);
     C.Brush.Color:= Colors.GutterBG;
+
+    case FGutterDecorAlignment of
+      taCenter:
+        NText:= (ARect.Left+ARect.Right-Ext.cx) div 2;
+      taLeftJustify:
+        NText:= ARect.Left;
+      taRightJustify:
+        NText:= ARect.Right-Ext.cx;
+    end;
+
     C.TextOut(
-      (ARect.Left+ARect.Right-Ext.cx) div 2,
+      NText,
       (ARect.Top+ARect.Bottom-Ext.cy) div 2,
       Decor.Data.Text
       );
     C.Font.Style:= StylePrev;
   end
   else
+  //paint decor icon
   if Assigned(FGutterDecorImages) then
   begin
     N:= Decor.Data.ImageIndex;
@@ -7263,7 +7602,7 @@ begin
 end;
 
 procedure TATSynEdit.DoPaintStaples(C: TCanvas; const ARect: TRect;
-  ACharSize: TPoint; const AScrollHorz: TATSynScrollInfo);
+  ACharSize: TPoint; const AScrollHorz: TATEditorScrollInfo);
 var
   nLineFrom, nLineTo, nRangeDeepest, nMaxHeight: integer;
   nIndent, nIndentBegin, nIndentEnd: integer;
@@ -7302,6 +7641,9 @@ begin
     if not Range^.Staple then Continue;
     if Range^.Folded then Continue;
     }
+
+    if not Strings.IsIndexValid(Range^.Y) then Continue;
+    if not Strings.IsIndexValid(Range^.Y2) then Continue;
 
     if IsLineFolded(Range^.Y, true) then Continue;
     if IsLineFolded(Range^.Y2, true) then Continue;
@@ -7451,7 +7793,6 @@ begin
     FMarkedRange.Add(0, ALine1);
     FMarkedRange.Add(0, ALine2);
   end;
-  InvalidateHilitingCache;
 end;
 
 procedure TATSynEdit.DoGetMarkedLines(out ALine1, ALine2: integer);
@@ -7598,7 +7939,7 @@ procedure TATSynEdit.DragDrop(Source: TObject; X, Y: Integer);
 var
   SText: atString;
   Pnt: TPoint;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
 begin
   if not (Source is TATSynEdit) then exit;
   if (Source=Self) then exit;
@@ -7644,14 +7985,6 @@ begin
   WMHScroll(Msg);
 end;
 
-procedure TATSynEdit.DoCaretsOnChanged(Sender: TObject);
-begin
-  if Strings.ModifiedRecent then
-    if Assigned(FCarets) and (FCarets.Count>0) then
-      Strings.DoSaveLastEditPos;
-      //it clears ModifiedRecent
-end;
-
 procedure TATSynEdit.TimerIdleTick(Sender: TObject);
 begin
   FTimerIdle.Enabled:= false;
@@ -7661,13 +7994,76 @@ begin
     FAdapterHilite.OnEditorIdle(Self);
 end;
 
-procedure TATSynEdit.DoStringsOnChange(Sender: TObject; AChange: TATLineChangeKind; ALine,
-  AItemCount: integer);
+procedure TATSynEdit.DoStringsOnChangeEx(Sender: TObject; AChange: TATLineChangeKind; ALine, AItemCount: integer);
+//we are called inside BeginEditing/EndEditing - just remember top edited line
+var
+  St: TATStrings;
+begin
+  St:= Strings;
+  if St.EditingActive then
+  begin
+    if ALine>=0 then
+      if (St.EditingTopLine<0) or (ALine<St.EditingTopLine) then
+        St.EditingTopLine:= ALine;
+  end
+  else
+    FlushEditingChangeEx(AChange, ALine, AItemCount);
+end;
+
+procedure TATSynEdit.DoStringsOnChangeLog(Sender: TObject; ALine: integer);
+var
+  St: TATStrings;
+begin
+  St:= Strings;
+  if St.EditingActive then
+  begin
+    if ALine>=0 then
+      if (St.EditingTopLine<0) or (ALine<St.EditingTopLine) then
+        St.EditingTopLine:= ALine;
+  end
+  else
+    FlushEditingChangeLog(ALine);
+end;
+
+procedure TATSynEdit.FlushEditingChangeEx(AChange: TATLineChangeKind; ALine, AItemCount: integer);
 begin
   Fold.Update(AChange, ALine, AItemCount);
 
   if Assigned(FAdapterHilite) then
     FAdapterHilite.OnEditorChangeEx(Self, AChange, ALine, AItemCount);
+end;
+
+procedure TATSynEdit.FlushEditingChangeLog(ALine: integer);
+begin
+  if Assigned(FOnChangeLog) then
+    FOnChangeLog(Self, ALine);
+end;
+
+procedure TATSynEdit.StartTimerDelayedParsing;
+begin
+  FTimerDelayedParsing.Enabled:= false;
+  FTimerDelayedParsing.Enabled:= true;
+  if Carets.Count>0 then
+    FLastCommandDelayedParsingOnLine:= Min(
+      FLastCommandDelayedParsingOnLine,
+      Max(0, Carets[0].FirstTouchedLine-1)
+      );
+end;
+
+procedure TATSynEdit.TimerDelayedParsingTick(Sender: TObject);
+//to solve CudaText issue #3403
+//const
+//  c: integer=0;
+begin
+  FTimerDelayedParsing.Enabled:= false;
+  if Assigned(FOnChangeLog) then
+    FOnChangeLog(Self, FLastCommandDelayedParsingOnLine);
+  {
+  //debug
+  inc(c);
+  Application.MainForm.Caption:= 'delayed parse: '+inttostr(c)+': '+inttostr(FLastCommandDelayedParsingOnLine);
+  }
+  FLastCommandDelayedParsingOnLine:= MaxInt;
 end;
 
 procedure TATSynEdit.DoStringsOnProgress(Sender: TObject);
@@ -7688,38 +8084,7 @@ begin
 end;
 
 
-procedure TATSynEdit.MinimapTooltipPaint(Sender: TObject);
-var
-  C: TCanvas;
-  RectAll: TRect;
-  Pnt: TPoint;
-  NWrapIndex, NLineCenter, NLineTop, NLineBottom: integer;
-begin
-  C:= FMinimapTooltip.Canvas;
-  RectAll:= Rect(0, 0, FMinimapTooltip.Width, FMinimapTooltip.Height);
-  Pnt:= ScreenToClient(Mouse.CursorPos);
-
-  C.Pen.Color:= Colors.MinimapTooltipBorder;
-  C.Brush.Color:= Colors.MinimapTooltipBG;
-  C.Rectangle(RectAll);
-
-  NWrapIndex:= GetMinimap_ClickedPosToWrapIndex(Pnt.Y);
-  FMinimapTooltip.Visible:= FMinimapTooltipVisible and (NWrapIndex>=0);
-  if NWrapIndex<0 then exit;
-  NLineCenter:= FWrapInfo[NWrapIndex].NLineIndex;
-  NLineTop:= Max(0, NLineCenter - FMinimapTooltipLinesCount div 2);
-  NLineBottom:= Min(NLineTop + FMinimapTooltipLinesCount-1, Strings.Count-1);
-
-  DoPaintTextFragmentTo(C, RectAll,
-    NLineTop,
-    NLineBottom,
-    true,
-    Colors.MinimapTooltipBG,
-    Colors.MinimapTooltipBorder
-    );
-end;
-
-procedure TATSynEdit.DoPaintTextFragmentTo(C: TCanvas;
+procedure TATSynEdit.DoPaintTextFragment(C: TCanvas;
   const ARect: TRect;
   ALineFrom, ALineTo: integer;
   AConsiderWrapInfo: boolean;
@@ -7730,6 +8095,7 @@ var
   NColorAfter: TColor;
   WrapItem: TATWrapItem;
   TextOutProps: TATCanvasTextOutProps;
+  SText: UnicodeString;
 begin
   C.Brush.Color:= AColorBG;
   C.FillRect(ARect);
@@ -7737,7 +8103,6 @@ begin
   FillChar(TextOutProps{%H-}, SizeOf(TextOutProps), 0);
 
   TextOutProps.Editor:= Self;
-  TextOutProps.SuperFast:= false;
   TextOutProps.TabHelper:= FTabHelper;
   TextOutProps.CharSize:= FCharSize;
   TextOutProps.CharsSkipped:= 0;
@@ -7789,23 +8154,30 @@ begin
       WrapItem.NLength:= Strings.LinesLen[NLine];
     end;
 
-    DoCalcLineHilite(WrapItem, FLineParts{%H-},
+    DoCalcLineHilite(WrapItem, FParts{%H-},
       0, cMaxCharsForOutput,
       AColorBG,
       false,
       NColorAfter,
       true);
 
+    SText:= Strings.LineSub(
+        WrapItem.NLineIndex,
+        WrapItem.NCharIndex,
+        GetVisibleColumns);
+
+    if FOptMaskCharUsed then
+      SText:= StringOfCharW(FOptMaskChar, Length(SText));
+
+    TextOutProps.HasAsciiNoTabs:= Strings.LinesHasAsciiNoTabs[WrapItem.NLineIndex];
+    TextOutProps.SuperFast:= false;
     TextOutProps.LineIndex:= WrapItem.NLineIndex;
     TextOutProps.CharIndexInLine:= WrapItem.NCharIndex;
     CanvasTextOut(C,
-      cSizeIndentTooltipX,
+      cSizeIndentTooltipX + WrapItem.NIndent*FCharSize.X,
       cSizeIndentTooltipY + FCharSize.Y*(NLine-ALineFrom),
-      Strings.LineSub(
-        WrapItem.NLineIndex,
-        WrapItem.NCharIndex,
-        GetVisibleColumns),
-      @FLineParts,
+      SText,
+      @FParts,
       NOutputStrWidth,
       TextOutProps
       )
@@ -7816,25 +8188,50 @@ begin
 end;
 
 
-procedure TATSynEdit.UpdateMinimapTooltip;
+procedure TATSynEdit.DoPaintMinimapTooltip(C: TCanvas);
 var
+  C_Bmp: TCanvas;
+  RectAll: TRect;
   Pnt: TPoint;
+  NWrapIndex, NLineCenter, NLineTop, NLineBottom: integer;
+  NPanelLeft, NPanelTop, NPanelWidth, NPanelHeight: integer;
 begin
-  if FMinimapTooltip=nil then exit;
-  if not FMinimapTooltip.Visible then exit;
   Pnt:= ScreenToClient(Mouse.CursorPos);
 
-  FMinimapTooltip.Width:= FRectMain.Width * FMinimapTooltipWidthPercents div 100;
+  NPanelWidth:= FRectMain.Width * FMinimapTooltipWidthPercents div 100;
   if FMinimapAtLeft then
-    FMinimapTooltip.Left:= FRectMinimap.Right + 1
+    NPanelLeft:= FRectMinimap.Right + 1
   else
-    FMinimapTooltip.Left:= FRectMinimap.Left - FMinimapTooltip.Width - 1;
-  FMinimapTooltip.Height:= FMinimapTooltipLinesCount*FCharSize.Y + 2;
-  FMinimapTooltip.Top:= Max(0, Min(ClientHeight-FMinimapTooltip.Height,
-    Pnt.Y - Trunc(FCharSize.Y*FMinimapTooltipLinesCount/2)
-    ));
+    NPanelLeft:= FRectMinimap.Left - NPanelWidth - 1;
+  NPanelHeight:= FMinimapTooltipLinesCount*FCharSize.Y + 2;
+  NPanelTop:= Max(0, Min(ClientHeight-NPanelHeight,
+    Pnt.Y - FCharSize.Y*FMinimapTooltipLinesCount div 2 ));
 
-  FMinimapTooltip.Invalidate;
+  if FMinimapTooltipBitmap=nil then
+    FMinimapTooltipBitmap:= TBitmap.Create;
+  FMinimapTooltipBitmap.SetSize(NPanelWidth, NPanelHeight);
+
+  RectAll:= Rect(0, 0, NPanelWidth, NPanelHeight);
+  C_Bmp:= FMinimapTooltipBitmap.Canvas;
+  C_Bmp.Pen.Color:= Colors.MinimapTooltipBorder;
+  C_Bmp.Brush.Color:= Colors.MinimapTooltipBG;
+  C_Bmp.Rectangle(RectAll);
+
+  NWrapIndex:= GetMinimap_ClickedPosToWrapIndex(Pnt.Y);
+  if NWrapIndex<0 then exit;
+  NLineCenter:= FWrapInfo[NWrapIndex].NLineIndex;
+  NLineTop:= Max(0, NLineCenter - FMinimapTooltipLinesCount div 2);
+  NLineBottom:= Min(NLineTop + FMinimapTooltipLinesCount-1, Strings.Count-1);
+
+  DoPaintTextFragment(C_Bmp, RectAll,
+    NLineTop,
+    NLineBottom,
+    true,
+    Colors.MinimapTooltipBG,
+    Colors.MinimapTooltipBorder
+    );
+
+  C.Draw(NPanelLeft, NPanelTop, FMinimapTooltipBitmap);
 end;
 
 
@@ -7869,7 +8266,7 @@ end;
 procedure TATSynEdit.FoldedMarkTooltipPaint(Sender: TObject);
 begin
   if FFoldedMarkCurrent.IsInited then
-    DoPaintTextFragmentTo(
+    DoPaintTextFragment(
       FFoldedMarkTooltip.Canvas,
       Rect(0, 0, FFoldedMarkTooltip.Width, FFoldedMarkTooltip.Height),
       FFoldedMarkCurrent.LineFrom,
@@ -7945,36 +8342,20 @@ begin
   FTabHelper.OnCalcLineLen:= @DoCalcLineLen;
 end;
 
-{$ifdef debug_fps}
-procedure TATSynEdit.DoPaintFPS(C: TCanvas);
+procedure TATSynEdit.DoPaintTiming(C: TCanvas);
 var
-  NFps: integer;
-  //NFpsMap: integer;
   S: string;
 begin
-  if FTickAll<1 then
-    FTickAll:= 1;
-  if FTickMinimap<1 then
-    FTickMinimap:= 1;
-  NFps:= 1000 div FTickAll div 5 * 5;
-  //NFpsMap:= 1000 div FTickMinimap;
+  if ModeOneLine then exit;
+  if GetVisibleLines<30 then exit;
 
-  C.Font.Name:= 'Arial';
+  C.Font.Name:= Font.Name;
   C.Font.Color:= clRed;
   C.Font.Size:= 8;
-  C.Brush.Color:= clCream;
 
-  S:= Format('#%d, fps %d', [FPaintCounter, NFps]);
-  CanvasTextOutSimplest(C, FClientW-100, 5, S);
-
-  S:= Format('miss %d+%d', [FMissMain-FMissMinimap, FMissMinimap]);
-  CanvasTextOutSimplest(C, FClientW-100, 20, S);
+  S:= Format('#%03d, %d+%d ms', [FPaintCounter, FTickAll, FTickMinimap]);
+  CanvasTextOutSimplest(C, 5, 5, S);
 end;
-{$else}
-procedure TATSynEdit.DoPaintFPS(C: TCanvas);
-begin
-end;
-{$endif}
 
 
 function TATSynEdit.GetEncodingName: string;
@@ -8134,20 +8515,6 @@ begin
   ShowScrollBar(Handle, SB_Horz, AValue);
 end;
 
-procedure TATSynEdit.InitMinimapTooltip;
-begin
-  if FMinimapTooltip=nil then
-  begin
-    FMinimapTooltip:= TPanel.Create(Self);
-    FMinimapTooltip.Hide;
-    FMinimapTooltip.Width:= 15;
-    FMinimapTooltip.Height:= 15;
-    FMinimapTooltip.Parent:= Self;
-    FMinimapTooltip.BorderStyle:= bsNone;
-    FMinimapTooltip.OnPaint:= @MinimapTooltipPaint;
-  end;
-end;
-
 procedure TATSynEdit.InitFoldedMarkList;
 begin
   if FFoldedMarkList=nil then
@@ -8277,13 +8644,232 @@ begin
     FRegexLinks.ModifierS:= false;
     FRegexLinks.ModifierM:= false; //M not needed
     FRegexLinks.ModifierI:= false; //I not needed to find links
-    FRegexLinks.Expression:= FOptShowURLsRegex;
+    FRegexLinks.Expression:= FOptShowURLsRegex{%H-};
     FRegexLinks.Compile;
 
     Result:= true;
   except
     exit;
   end;
+end;
+
+
+function TATSynEdit.GetFoldingAsString: string;
+var
+  L: TStringList;
+  i: integer;
+  R: PATSynRange;
+begin
+  Result:= '';
+  L:= TStringList.Create;
+  try
+    L.LineBreak:= ',';
+    for i:= 0 to Fold.Count-1 do
+    begin
+      R:= Fold.ItemPtr(i);
+      if R^.Folded then
+        L.Add(IntToStr(R^.Y));
+    end;
+    Result:= L.Text;
+  finally
+    L.Free;
+  end;
+end;
+
+procedure TATSynEdit.SetFoldingAsString(const AValue: string);
+var
+  Sep: TATStringSeparator;
+  NLineTop, NLine, NRange: integer;
+  bChange: boolean;
+begin
+  DoCommand(cCommand_UnfoldAll);
+  NLineTop:= LineTop;
+  bChange:= false;
+
+  Sep.Init(AValue);
+  repeat
+    if not Sep.GetItemInt(NLine, -1) then Break;
+
+    if not Strings.IsIndexValid(NLine) then Continue;
+
+    NRange:= Fold.FindRangeWithPlusAtLine(NLine);
+    if NRange<0 then Continue;
+
+    if not Fold.ItemPtr(NRange)^.Folded then
+    begin
+      bChange:= true;
+      DoRangeFold(NRange);
+    end;
+  until false;
+
+  if bChange then
+  begin
+    if FScrollHorz.NPos>0 then
+    begin
+      //fix changed horz scroll, CudaText issue #1439
+      FScrollHorz.SetZero;
+
+      //SetZero may scroll view out of caret
+      DoGotoCaret(cEdgeTop);
+    end;
+
+    //keep LineTop! CudaText issue #3055
+    LineTop:= NLineTop;
+
+    Update;
+  end;
+end;
+
+procedure TATSynEdit.UpdateAndWait(AUpdateWrapInfo: boolean; APause: integer);
+begin
+  Update(AUpdateWrapInfo);
+  Paint;
+  Application.ProcessMessages;
+  Sleep(APause);
+end;
+
+function TATSynEdit.IsPosInVisibleArea(AX, AY: integer): boolean;
+var
+  Pnt: TPoint;
+  NTop, NCount: integer;
+begin
+  NTop:= LineTop;
+  if AY<NTop then
+    exit(false);
+
+  NCount:= Strings.Count;
+  if NCount<=1 then
+    exit(true);
+
+  if OptWrapMode=cWrapOff then
+  begin
+    Result:= AY<=NTop+GetVisibleLines;
+  end
+  else
+  begin
+    if AY>LineBottom then
+      exit(false);
+
+    Pnt:= CaretPosToClientPos(Point(AX, AY));
+    if Pnt.Y=-1 then
+      exit(true);
+
+    Result:= PtInRect(FRectMainVisible, Pnt);
+  end;
+end;
+
+procedure TATSynEdit.DoStringsOnUndoBefore(Sender: TObject; AX, AY: integer);
+var
+  OldOption: boolean;
+  Tick: QWord;
+begin
+  FLastUndoPaused:= false;
+
+  if ModeOneLine then exit;
+  if FOptUndoPause<=0 then exit;
+  if Carets.Count>1 then exit;
+  if AY<0 then exit;
+  if AY>=Strings.Count then exit; //must have for the case: big file; Ctrl+A, Del; Undo
+  if IsPosInVisibleArea(AX, AY) then exit;
+
+  Tick:= GetTickCount64;
+  if FLastUndoTick>0 then
+    if Tick-FLastUndoTick<FOptUndoPause2 then
+      exit;
+
+  FLastUndoPaused:= true;
+  FLastUndoTick:= Tick;
+
+  if FOptUndoPauseHighlightLine then
+  begin
+    OldOption:= OptShowCurLine;
+    OptShowCurLine:= true;
+  end;
+
+  DoGotoPos(
+    Point(AX, AY),
+    Point(-1, -1),
+    FOptUndoIndentHorz,
+    FOptUndoIndentVert,
+    true,
+    true,
+    false,
+    false);
+  { //not good
+  DoShowPos(
+    Point(0, ALine),
+    FOptUndoIndentHorz,
+    FOptUndoIndentVert,
+    true,
+    true);
+    }
+
+  UpdateAndWait(true, FOptUndoPause);
+
+  if FOptUndoPauseHighlightLine then
+    OptShowCurLine:= OldOption;
+end;
+
+procedure TATSynEdit.DoStringsOnUndoAfter(Sender: TObject; AX, AY: integer);
+var
+  OldOption: boolean;
+begin
+  if not FLastUndoPaused then exit;
+  {
+  if ModeOneLine then exit;
+  if FOptUndoPause<=0 then exit;
+  if AY<0 then exit;
+  if AY>=Strings.Count then exit; //must have for the case: big file; Ctrl+A, Del; Undo
+  if IsPosInVisibleArea(AX, AY) then exit;
+  }
+
+  if FOptUndoPauseHighlightLine then
+  begin
+    OldOption:= OptShowCurLine;
+    OptShowCurLine:= true;
+  end;
+
+  UpdateAndWait(true, FOptUndoPause);
+
+  if FOptUndoPauseHighlightLine then
+    OptShowCurLine:= OldOption;
+end;
+
+procedure TATSynEdit.ActionAddJumpToUndo;
+var
+  St: TATStrings;
+begin
+  St:= Strings;
+  if FOptUndoForCaretJump then
+  begin
+    St.SetGroupMark; //solve CudaText #3269
+    St.ActionAddJumpToUndo(St.CaretsAfterLastEdition);
+    //ActionAddJumpToUndo(GetCaretsArray); //bad, parameter is needed only for another array
+  end;
+end;
+
+
+procedure TATSynEdit.BeginEditing;
+var
+  St: TATStrings;
+begin
+  St:= Strings;
+  St.EditingActive:= true;
+  St.EditingTopLine:= -1;
+end;
+
+procedure TATSynEdit.EndEditing(ATextChanged: boolean);
+var
+  St: TATStrings;
+begin
+  St:= Strings;
+  St.EditingActive:= false;
+  if ATextChanged then
+    if St.EditingTopLine>=0 then
+    begin
+      //FlushEditingChangeEx(cLineChangeEdited, FEditingTopLine, 1); //not needed
+      FlushEditingChangeLog(St.EditingTopLine);
+    end;
 end;
 
 {$I atsynedit_carets.inc}

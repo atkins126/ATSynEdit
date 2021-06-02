@@ -159,6 +159,9 @@ type
     FDataString: string;
     FCallbackString: string;
     FPlaceMarker: boolean;
+    FReplacedAtLine: integer;
+    FLastTick: QWord;
+    FLastActionTime: QWord;
     //FReplacedAtEndOfText: boolean;
     //
     function IsSelStartsAtMatch: boolean;
@@ -207,6 +210,9 @@ type
     procedure UpdateFragments;
     function CurrentFragment: TATEditorFragment;
     property CurrentFragmentIndex: integer read FFragmentIndex write SetFragmentIndex;
+    //timing
+    procedure BeginTiming;
+    procedure EndTiming;
   protected
     procedure DoOnFound(AWithEvent: boolean); override;
     procedure DoConfirmReplace(APos, AEnd: TPoint; var AConfirmThis,
@@ -229,6 +235,7 @@ type
     property IndentVert: integer read FIndentVert write FIndentVert;
     property DataString: string read FDataString write FDataString;
     property CallbackString: string read FCallbackString write FCallbackString;
+    property LastActionTime: QWord read FLastActionTime;
     //
     constructor Create;
     destructor Destroy; override;
@@ -841,7 +848,9 @@ begin
   PosEnd.X:= Editor.Strings.LinesLen[Cnt-1];
   PosEnd.Y:= Cnt-1;
 
+  BeginTiming;
   Result:= FindMatch_InEditor(APosStart, PosEnd, false);
+  EndTiming;
 end;
 
 function TATEditorFinder.ConvertBufferPosToCaretPos(APos: integer): TPoint;
@@ -928,6 +937,7 @@ begin
   UpdateFragments;
   if OptRegex then
     UpdateBuffer;
+  BeginTiming;
 
   if FFragments.Count=0 then
     Result:= DoCount_InFragment(AWithEvent)
@@ -941,6 +951,8 @@ begin
     end;
     CurrentFragmentIndex:= 0;
   end;
+
+  EndTiming;
 end;
 
 procedure TATEditorFinder.DoAction_FindAll(AResults: TATFinderResults; AWithEvent: boolean);
@@ -948,6 +960,7 @@ begin
   UpdateCarets(false);
   UpdateFragments;
   CurrentFragmentIndex:= 0;
+  BeginTiming;
 
   if OptRegex then
   begin
@@ -956,6 +969,8 @@ begin
   end
   else
     DoCollect_Usual(AResults, AWithEvent, false);
+
+  EndTiming;
 end;
 
 
@@ -971,6 +986,7 @@ begin
     raise Exception.Create('Finder Extract action called for non-regex mode');
   UpdateCarets(false);
   UpdateBuffer;
+  BeginTiming;
 
   AMatches.Clear;
   ListRes:= TATFinderResults.Create;
@@ -994,6 +1010,8 @@ begin
   finally
     FreeAndNil(ListRes);
   end;
+
+  EndTiming;
 end;
 
 function TATEditorFinder.DoAction_ReplaceAll: integer;
@@ -1001,7 +1019,10 @@ var
   i: integer;
 begin
   Result:= 0;
+  FReplacedAtLine:= MaxInt;
+  BeginTiming;
   if Editor.ModeReadOnly then exit;
+  Editor.Strings.SetNewCommandMark;
 
   UpdateCarets(false);
   UpdateFragments;
@@ -1021,6 +1042,11 @@ begin
     end;
     CurrentFragmentIndex:= 0;
   end;
+
+  if FReplacedAtLine<>MaxInt then
+    Editor.DoEventChange(FReplacedAtLine);
+
+  EndTiming;
 end;
 
 
@@ -1072,8 +1098,6 @@ begin
           if not Ok then Break;
         end;
     end;
-
-    Editor.DoEventChange;
   finally
     FreeAndNil(L);
   end;
@@ -1093,6 +1117,8 @@ begin
   //  (APosEnd.Y>Strs.Count-1) or
   //  ((APosEnd.Y=Strs.Count-1) and (APosEnd.X=Strs.LinesLen[APosEnd.Y]));
 
+  FReplacedAtLine:= Min(FReplacedAtLine, APosBegin.Y);
+
   Strs.TextReplaceRange(
     APosBegin.X, APosBegin.Y,
     APosEnd.X, APosEnd.Y,
@@ -1104,7 +1130,6 @@ begin
 
   if AUpdateBuffer and OptRegex then
   begin
-    Editor.DoEventChange;
     UpdateBuffer_FromStrings(Strs);
   end;
 
@@ -1208,11 +1233,13 @@ function TATEditorFinder.DoAction_FindOrReplace(AReplace, AForMany: boolean;
 var
   NMaxFragment: integer;
   i: integer;
-  bWasGoodFragment: boolean;
+  //bWasGoodFragment: boolean;
 begin
   Result:= false;
   AChanged:= false;
+  FReplacedAtLine:= MaxInt;
   UpdateCarets(true);
+  BeginTiming;
   if OptInSelection and not FinderCarets.IsSelection then exit;
 
   if not Assigned(Editor) then
@@ -1222,6 +1249,8 @@ begin
   if FinderCarets.Count=0 then
     raise Exception.Create('Finder.FinderCarets is empty');
   if AReplace and Editor.ModeReadOnly then exit;
+  if AReplace then
+    Editor.Strings.SetNewCommandMark;
 
   UpdateFragments;
   DoFixCaretSelectionDirection;
@@ -1236,7 +1265,7 @@ begin
 
   if not OptBack then
   begin
-    bWasGoodFragment:= false;
+    //bWasGoodFragment:= false;
 
     //handle OptWrapped #1, Result isn't ready
     //this is to reset special marker, when last match in last selection is: abc[def], ie until selection end
@@ -1245,7 +1274,7 @@ begin
         if FFragments[NMaxFragment].IsMarkerOnFragmentEnd(Editor) then
         begin
           Editor.Markers.Clear;
-          bWasGoodFragment:= true;
+          //bWasGoodFragment:= true;
         end;
 
     //LoopFw:
@@ -1255,7 +1284,7 @@ begin
       Result:= DoFindOrReplace_InFragment(AReplace, AForMany, AChanged, AUpdateCaret);
       if Result then
       begin
-        bWasGoodFragment:= true;
+        //bWasGoodFragment:= true;
         Break;
       end;
     end;
@@ -1289,6 +1318,11 @@ begin
   end;
 
   CurrentFragmentIndex:= -1;
+
+  if FReplacedAtLine<>MaxInt then
+    Editor.DoEventChange(FReplacedAtLine);
+
+  EndTiming;
 end;
 
 
@@ -1613,6 +1647,9 @@ begin
   begin
     Editor.DoCaretSingle(APosX, APosY, AEndX, AEndY);
     Editor.DoEventCarets;
+
+    //solve CudaText issue #3261:
+    Editor.ActionAddJumpToUndo;
   end;
 end;
 
@@ -1624,7 +1661,10 @@ var
   bSel: boolean;
 begin
   Result:= false;
+  FReplacedAtLine:= MaxInt;
+  BeginTiming;
   if Editor.ModeReadOnly then exit;
+  Editor.Strings.SetNewCommandMark;
 
   UpdateCarets(true);
   if OptInSelection and not FinderCarets.IsSelection then exit;
@@ -1659,6 +1699,11 @@ begin
     Point(X2, Y2),
     SNew, true, true, FMatchEdPosAfterRep);
   Result:= true;
+
+  if FReplacedAtLine<>MaxInt then
+    Editor.DoEventChange(FReplacedAtLine);
+
+  EndTiming;
 end;
 
 
@@ -2307,6 +2352,7 @@ var
   Res: TATFinderResult;
   PosX, PosY, SelX, SelY: integer;
   AttrRec: TATLinePart;
+  bMatchVisible: boolean;
   iRes, iLine: integer;
 const
   MicromapMode: TATMarkerMicromapMode = mmmShowInTextAndMicromap;
@@ -2320,8 +2366,11 @@ const
   //
 begin
   Result:= 0;
+  BeginTiming;
   if Editor=nil then exit;
+  bMatchVisible:= false;
 
+  if StrFind='' then exit;
   if Editor.Strings.Count>=AMaxLines then
     exit;
 
@@ -2347,6 +2396,11 @@ begin
     for iRes:= 0 to Results.Count-1 do
     begin
       Res:= Results[iRes];
+
+      if not bMatchVisible then
+        if Editor.IsPosInVisibleArea(Res.FPos.X, Res.FPos.Y) then
+          bMatchVisible:= true;
+
       //single line attr
       if Res.FPos.Y=Res.FEnd.Y then
       begin
@@ -2389,6 +2443,22 @@ begin
 
     Res:= Results.First;
 
+    //CudaText issue #3385.
+    //trying to do the same as Sublime, with option "Highlight all matches":
+    //if any of matches is visible: don't scroll to 1st match. else:
+    //if 1st match is below the current view-area: scroll to it,
+    //if 1st match is above: scroll depends on "wrapped search".
+    if AScrollTo1st then
+    begin
+      if bMatchVisible then
+        AScrollTo1st:= false
+      { //commented to fix issue #3422
+      else
+      if not OptWrapped then
+        AScrollTo1st:= Res.FPos.Y>=Editor.LineBottom;
+        }
+    end;
+
     if AScrollTo1st then
     begin
       if AMoveCaret then
@@ -2410,6 +2480,20 @@ begin
   finally
     FreeAndNil(Results);
   end;
+
+  EndTiming;
 end;
+
+procedure TATEditorFinder.BeginTiming;
+begin
+  FLastTick:= GetTickCount64;
+  FLastActionTime:= 0;
+end;
+
+procedure TATEditorFinder.EndTiming;
+begin
+  FLastActionTime:= GetTickCount64-FLastTick;
+end;
+
 
 end.

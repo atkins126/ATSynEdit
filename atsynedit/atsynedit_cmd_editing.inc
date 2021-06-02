@@ -46,7 +46,8 @@ begin
   TextItems:= nil;
 
   try
-    bNeedGroup:= (Carets.Count>1) or (Carets.IsSelection);
+    //bNeedGroup:= (Carets.Count>1) or (Carets.IsSelection);
+    bNeedGroup:= false; //CudaText #3274
 
     if bNeedGroup then
       Strings.BeginUndoGroup;
@@ -114,7 +115,7 @@ begin
     for i:= Carets.Count-1 downto 0 do
     begin
       Caret:= Carets[i];
-      StrSpaces:= StringOfChar(' ', FTabSize - Caret.PosX mod FTabSize);
+      StrSpaces:= StringOfCharW(' ', FTabSize - Caret.PosX mod FTabSize);
       Strings.TextInsert(Caret.PosX, Caret.PosY, StrSpaces, AOvrMode, Shift, PosAfter);
       DoCaretsShift(i, Caret.PosX, Caret.PosY, Shift.X, Shift.Y, PosAfter);
 
@@ -607,10 +608,11 @@ begin
   if bNeedGroup then
     Strings.EndUndoGroup;
 
+  //cResultCaretLazy is to fix CudaText #3065
   if ANext then
-    Result:= [cResultText, cResultCaretBottom]
+    Result:= [cResultText, cResultCaretBottom, cResultCaretLazy]
   else
-    Result:= [cResultText, cResultCaretTop];
+    Result:= [cResultText, cResultCaretTop, cResultCaretLazy];
 end;
 
 function TATSynEdit.DoCommand_TextDeleteWordEntire: TATCommandResults;
@@ -833,23 +835,44 @@ begin
 end;
 
 
-function TATSynEdit.DoCommand_Undo: TATCommandResults;
+function TATSynEdit.DoCommand_UndoRedo(AUndo: boolean): TATCommandResults;
+//undo/redo runs App.ProcessMessages, need to lock
+var
+  St: TATStrings;
+  bLock, bFocus: boolean;
 begin
   Result:= [];
   if ModeReadOnly then Exit;
+  St:= Strings;
 
-  Strings.Undo(FOptUndoGrouped);
-  Result:= [cResultText, cResultCaretAny, cResultUndoRedo];
-end;
+  if AUndo then
+    bLock:= (GetUndoCount>0) and (OptUndoPause>0)
+  else
+    bLock:= (GetRedoCount>0) and (OptUndoPause>0);
 
-function TATSynEdit.DoCommand_Redo: TATCommandResults;
-begin
-  Result:= [];
-  if ModeReadOnly then Exit;
+  if bLock then
+  begin
+    bFocus:= _IsFocused;
+    Enabled:= false;
+  end;
 
-  Strings.SetGroupMark;
-  Strings.Redo(FOptUndoGrouped);
-  Result:= [cResultText, cResultCaretAny, cResultUndoRedo];
+  FLastUndoTick:= 0;
+
+  try
+    if not AUndo then
+      St.SetGroupMark;
+
+    St.UndoOrRedo(AUndo, FOptUndoGrouped)
+  finally
+    if bLock then
+    begin
+      Enabled:= true;
+      if bFocus and CanSetFocus then
+        SetFocus;
+    end;
+  end;
+
+  Result:= [cResultText, cResultCaretBottom, cResultCaretLazy, cResultUndoRedo];
 end;
 
 
@@ -1008,7 +1031,7 @@ begin
   Result:= [cResultText, cResultCaretAny];
 end;
 
-function TATSynEdit.DoCommand_TextChangeCase(AMode: TATCaseConvert): TATCommandResults;
+function TATSynEdit.DoCommand_TextChangeCase(AMode: TATEditorCaseConvert): TATCommandResults;
 var
   Caret: TATCaretItem;
   Str1, Str2: atString;

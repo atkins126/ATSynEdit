@@ -317,7 +317,7 @@ var
   Pnt: TPoint;
   NLine: integer;
   IntList: TATIntArray;
-  Details: TATPosDetails;
+  Details: TATEditorPosDetails;
   Rng: PATSynRange;
   mi: TMenuItem;
   i: integer;
@@ -444,7 +444,7 @@ begin
 end;
 
 
-procedure TATSynEdit.DoFoldUnfoldRangeAtCurLine(AOp: TATFoldRangeCmd);
+procedure TATSynEdit.DoFoldUnfoldRangeAtCurLine(AOp: TATEditorFoldRangeCommand);
 var
   NLine, NRange: integer;
   bFolded: boolean;

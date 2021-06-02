@@ -15,6 +15,7 @@ uses
   ATSynEdit_Carets,
   ATSynEdit_Bookmarks,
   ATSynEdit_Gaps,
+  ATSynEdit_CanvasProc,
   ATSynEdit_Finder,
   ATSynEdit_Export_HTML,
   //ATSynEdit_Hotspots,
@@ -92,7 +93,7 @@ type
     mnuEnc: TMenuItem;
     MenuItem2: TMenuItem;
     mnuHelpMous: TMenuItem;
-    MenuItem3: TMenuItem;
+    mnuTestConvPos: TMenuItem;
     MenuItem4: TMenuItem;
     MenuItem6: TMenuItem;
     MenuItem7: TMenuItem;
@@ -157,6 +158,7 @@ type
     procedure mnuFileSaveClick(Sender: TObject);
     procedure mnuFindClick(Sender: TObject);
     procedure mnuFindNextClick(Sender: TObject);
+    procedure mnuTestConvPosClick(Sender: TObject);
     procedure mnuTestGapAddClick(Sender: TObject);
     procedure mnuTestGapClearClick(Sender: TObject);
     procedure mnuTestGapPanelsClick(Sender: TObject);
@@ -236,7 +238,7 @@ type
     procedure EditChanged(Sender: TObject);
     procedure EditCaretMoved(Sender: TObject);
     procedure EditDrawLine(Sender: TObject; C: TCanvas; ALineIndex, AX, AY: integer;
-      const AStr: atString; ACharSize: TPoint; const AExtent: TATIntArray);
+      const AStr: atString; ACharSize: TPoint; constref AExtent: TATIntFixedArray);
     procedure EditCalcLine(Sender: TObject; var AParts: TATLineParts;
       ALineIndex, ACharIndex, ALineLen: integer; var AColorAfterEol: TColor);
     procedure EditScroll(Sender: TObject);
@@ -301,6 +303,10 @@ begin
   ed.Parent:= PanelMain;
   ed.Align:= alClient;
 
+  {$ifdef LCLQt5}
+  OptCanvasTextoutNeedsOffsets:= true;
+  {$endif}
+
   {$ifdef windows}
   ed.Font.Name:= 'Consolas';
   {$else}
@@ -317,7 +323,7 @@ begin
 
   ed.OnChange:= @EditChanged;
   ed.OnChangeModified:=@EditChangeModified;
-  ed.Strings.OnChange:=@EditStringsChange;
+  ed.Strings.OnChangeEx:=@EditStringsChange;
   ed.Strings.OnChangeBlock:=@EditStringsChangeBlock;
   ed.Strings.GutterDecor1:= ed.GutterDecor;
   ed.OnChangeCaretPos:= @EditCaretMoved;
@@ -562,7 +568,7 @@ begin
       Data.Kind:= 1;
       Data.LineNum:= ALine;
       Data.ShowInBookmarkList:= true;
-      Data.Hint:= Format('Bookmark for line %d', [ALine+1]);
+      Data.Hint:= StrNew(PChar(Format('Bookmark for line %d', [ALine+1])));
       ed.Strings.Bookmarks.Add(Data);
     end;
     ed.Update;
@@ -960,6 +966,14 @@ begin
   ok:= FFinder.DoAction_FindOrReplace(false, false, bChanged, true);
   FinderUpdateEditor(false);
   if not ok then DoFindError;
+end;
+
+procedure TfmMain.mnuTestConvPosClick(Sender: TObject);
+var
+  P: TPoint;
+begin
+  P:= ed.CaretPosToClientPos(Point(0, ed.Strings.Count{after end-of-file!}));
+  ShowMessage(Format('Client pos (%d, %d)', [P.X, P.Y]));
 end;
 
 procedure TfmMain.mnuTestGapAddClick(Sender: TObject);
@@ -1399,8 +1413,7 @@ begin
 end;
 
 procedure TfmMain.EditDrawLine(Sender: TObject; C: TCanvas; ALineIndex, AX,
-  AY: integer; const AStr: atString; ACharSize: TPoint;
-  const AExtent: TATIntArray);
+  AY: integer; const AStr: atString; ACharSize: TPoint; constref AExtent: TATIntFixedArray);
 var
   X1, X2, Y, i: integer;
 begin
@@ -1411,13 +1424,13 @@ begin
   C.Pen.Width:= 2;
   C.Pen.EndCap:= pecSquare;
 
-  for i:= 1 to Length(AStr) do
+  for i:= 1 to Min(Length(AStr), AExtent.Len) do
     if AStr[i]='w' then
     begin
       X1:= AX;
       if i>1 then
-        Inc(X1, AExtent[i-2]);
-      X2:= AX+AExtent[i-1];
+        Inc(X1, AExtent.Data[i-2]);
+      X2:= AX+AExtent.Data[i-1];
       Y:= AY+ACharSize.Y-1;
 
       C.Line(X1, Y, X2, Y);
